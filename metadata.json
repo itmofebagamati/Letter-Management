@@ -1,0 +1,6 @@
+{
+  "name": "Nepal Government Letter Generator",
+  "description": "An automatic government letter generator that assists users in drafting and generating official letters for Nepal government offices in Microsoft Word (.docx) format, integrated with AI drafting assistance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
