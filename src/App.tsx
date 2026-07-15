@@ -169,8 +169,8 @@ export default function App() {
     presetId: "mofe_bagamati", // Default to the user's Ministry of Economic Affairs & Planning, Bagamati Province
     officeProvince: "बागमती प्रदेश सरकार",
     officeName: "आर्थिक मामिला तथा योजना मन्त्रालय",
-    officeDepartment: "प्रशासन तथा योजना शाखा",
-    officeSection: "admin",
+    officeDepartment: "",
+    officeSection: "office",
     officeAddress: "हेटौंडा, मकवानपुर",
     emblemType: "province_bagamati",
     customLogoUrl: "",
@@ -694,10 +694,9 @@ export default function App() {
   const handleRegisterAndDownload = async (format: "docx" | "pdf") => {
     setIsRegisteringNow(true);
     try {
-      const sectionId = state.officeSection || "admin";
-      const sectionObj = OFFICE_SECTIONS.find(s => s.id === sectionId) || OFFICE_SECTIONS[0];
+      const sectionId = "office";
       
-      // 1. Atomically increment and reserve next running number for this section in Firestore
+      // 1. Atomically increment and reserve next running number in Firestore
       const nextNo = await getNextChalaniNumber(sectionId);
       
       // Convert to Nepali digits if letter is written in Nepali
@@ -743,8 +742,8 @@ export default function App() {
         chalaniNo: formattedNo,
         letterNo: updatedState.letterNo,
         sectionId: sectionId,
-        sectionNameNe: sectionObj.nameNe,
-        sectionNameEn: sectionObj.nameEn,
+        sectionNameNe: "",
+        sectionNameEn: "",
         recipient: recipientString,
         subject: updatedState.subject,
         dateBS: updatedState.dateBS,
@@ -1593,34 +1592,18 @@ ${state.senderDesignation}
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">
-                  {state.language === "ne" ? "शाखा / विभाग" : "Department / Section"}
-                </label>
-                <input
-                  id="office-dept-input"
-                  type="text"
-                  value={state.officeDepartment}
-                  onChange={(e) => setState({ ...state, officeDepartment: e.target.value })}
-                  placeholder="प्रशासन महाशाखा"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-red-500 focus:outline-none bg-white transition-all"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">
-                  {state.language === "ne" ? "कार्यालयको ठेगाना" : "Office Address"}
-                </label>
-                <input
-                  id="office-address-input"
-                  type="text"
-                  value={state.officeAddress}
-                  onChange={(e) => setState({ ...state, officeAddress: e.target.value })}
-                  placeholder="हेटौंडा, नेपाल"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-red-500 focus:outline-none bg-white transition-all"
-                />
-              </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700">
+                {state.language === "ne" ? "कार्यालयको ठेगाना" : "Office Address"}
+              </label>
+              <input
+                id="office-address-input"
+                type="text"
+                value={state.officeAddress}
+                onChange={(e) => setState({ ...state, officeAddress: e.target.value })}
+                placeholder="हेटौंडा, नेपाल"
+                className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-red-500 focus:outline-none bg-white transition-all"
+              />
             </div>
           </div>
 
@@ -1628,39 +1611,8 @@ ${state.senderDesignation}
           <div className="border-t border-slate-100 pt-5 flex flex-col gap-4">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
-              {state.language === "ne" ? "२. शाखा र चलानी विवरण (Section & Chalani)" : "2. Section & Ref Details"}
+              {state.language === "ne" ? "२. चलानी विवरण (Chalani Details)" : "2. Chalani Details"}
             </h3>
-
-            {/* Section/Department Dropdown */}
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                <span>{state.language === "ne" ? "कार्यरत शाखा (Office Section)" : "Working Section / Branch"}</span>
-                <span className="text-[9px] text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
-                  {state.language === "ne" ? "केन्द्रीय क्लाउड स्रोत" : "Cloud Active"}
-                </span>
-              </label>
-              <select
-                value={state.officeSection || "admin"}
-                onChange={(e) => {
-                  const secId = e.target.value;
-                  const secObj = OFFICE_SECTIONS.find(s => s.id === secId);
-                  if (secObj) {
-                    setState({
-                      ...state,
-                      officeSection: secId,
-                      officeDepartment: state.language === "ne" ? secObj.nameNe : secObj.nameEn
-                    });
-                  }
-                }}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm bg-white focus:ring-2 focus:ring-red-500 focus:outline-none transition-all cursor-pointer"
-              >
-                {OFFICE_SECTIONS.map((sec) => (
-                  <option key={sec.id} value={sec.id}>
-                    {state.language === "ne" ? sec.nameNe : sec.nameEn}
-                  </option>
-                ))}
-              </select>
-            </div>
 
             {/* Auto Cloud Chalani Checkbox Option */}
             <div className="bg-slate-50 border border-slate-200/60 p-2.5 rounded-lg space-y-1.5">
@@ -1680,7 +1632,7 @@ ${state.senderDesignation}
               </div>
               <p className="text-[10px] text-slate-500 leading-normal">
                 {state.language === "ne"
-                  ? "सक्रिय हुँदा, यस शाखाको लागि केन्द्रीय डेटाबेसमा सुरक्षित र अद्वितीय चलानी नम्बर सिर्जना गरिन्छ।"
+                  ? "सक्रिय हुँदा, केन्द्रीय डेटाबेसमा सुरक्षित र अद्वितीय चलानी नम्बर सिर्जना गरिन्छ।"
                   : "Guarantees a continuous, unique sequential number in the central database."}
               </p>
             </div>
@@ -2692,42 +2644,46 @@ ${state.senderDesignation}
               </div>
             </div>
 
-            {/* Active Sections list & Counters overview */}
-            {OFFICE_SECTIONS.slice(0, 3).map((sec) => {
-              const count = chalaniRegister.filter(r => r.sectionId === sec.id).length;
-              return (
-                <div key={sec.id} className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-800">
-                      {state.language === "ne" ? sec.nameNe : sec.nameEn}
-                    </span>
-                    <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full font-sans">
-                      {state.language === "ne" ? `कुल ${toNepaliNumerals(count)}` : `${count} total`}
-                    </span>
-                  </div>
-                  
-                  {/* Inline Next Sequence Selector */}
-                  <div className="flex items-center gap-2 justify-between pt-1 border-t border-slate-100">
-                    <span className="text-[10px] text-slate-500 font-sans">
-                      {state.language === "ne" ? "अर्को चलानी क्रमः" : "Next sequence:"}
-                    </span>
-                    <input
-                      type="number"
-                      placeholder="Next No"
-                      defaultValue={count + 1}
-                      onBlur={(e) => handleCounterOverride(sec.id, e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          handleCounterOverride(sec.id, (e.target as HTMLInputElement).value);
-                        }
-                      }}
-                      className="w-16 px-1.5 py-0.5 border border-slate-200 rounded text-xs text-center font-bold text-red-600 focus:outline-none focus:ring-1 focus:ring-red-500 font-sans"
-                      title={state.language === "ne" ? "चलानी क्रम परिवर्तन गर्न यहाँ नयाँ नम्बर टाइप गरि बाहिर क्लिक गर्नुहोस" : "Change sequence value"}
-                    />
-                  </div>
+            {/* Global Sequence Management Card */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 col-span-1 md:col-span-3">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                  <Database className="w-6 h-6 animate-pulse" />
                 </div>
-              );
-            })}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                    {state.language === "ne" ? "चलानी नम्बर क्रम व्यवस्थापन" : "Sequence Number Management"}
+                  </span>
+                  <span className="text-xs md:text-sm font-semibold text-slate-700 block mt-0.5">
+                    {state.language === "ne" ? "केन्द्रीय कार्यालयको अर्को चलानी नम्बर अद्यावधिक गर्नुहोस्" : "Update central office next dispatch serial number"}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Inline Next Sequence Override */}
+              <div className="flex items-center gap-2 self-end md:self-auto border-t md:border-t-0 pt-3 md:pt-0 w-full md:w-auto justify-between md:justify-start">
+                <span className="text-[10px] md:text-xs text-slate-500 font-sans">
+                  {state.language === "ne" ? "अर्को चलानी क्रमः" : "Next sequence:"}
+                </span>
+                <input
+                  type="number"
+                  placeholder="Next No"
+                  key={chalaniRegister.length} // Force reset when register length changes
+                  defaultValue={chalaniRegister.length > 0 ? Math.max(...chalaniRegister.map(r => {
+                    const parsed = parseInt(r.chalaniNo || "", 10);
+                    return isNaN(parsed) ? 0 : parsed;
+                  })) + 1 : 1}
+                  onBlur={(e) => handleCounterOverride("office", e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleCounterOverride("office", (e.target as HTMLInputElement).value);
+                    }
+                  }}
+                  className="w-24 px-2.5 py-1.5 border border-slate-200 rounded-md text-sm text-center font-bold text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 font-sans"
+                  title={state.language === "ne" ? "चलानी क्रम परिवर्तन गर्न यहाँ नयाँ नम्बर टाइप गरि बाहिर क्लिक गर्नुहोस" : "Change sequence value"}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Table list card */}
@@ -2755,19 +2711,6 @@ ${state.senderDesignation}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="px-3 py-1.5 border border-slate-200 rounded-md text-xs focus:ring-2 focus:ring-red-500 focus:outline-none w-full md:w-64 bg-white font-sans"
                 />
-
-                <select
-                  value={filterSection}
-                  onChange={(e) => setFilterSection(e.target.value)}
-                  className="px-3 py-1.5 border border-slate-200 rounded-md text-xs bg-white focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer font-sans"
-                >
-                  <option value="all">{state.language === "ne" ? "सबै शाखाहरू" : "All Sections"}</option>
-                  {OFFICE_SECTIONS.map((sec) => (
-                    <option key={sec.id} value={sec.id}>
-                      {state.language === "ne" ? sec.nameNe : sec.nameEn}
-                    </option>
-                  ))}
-                </select>
 
                 <button
                   onClick={loadRegister}
@@ -2805,7 +2748,6 @@ ${state.senderDesignation}
                       <th className="py-3.5 px-4 text-center w-24">{state.language === "ne" ? "चलानी नं." : "Ref No."}</th>
                       <th className="py-3.5 px-4 w-28">{state.language === "ne" ? "पत्र संख्या" : "Letter No."}</th>
                       <th className="py-3.5 px-4 w-32">{state.language === "ne" ? "दर्ता मिति" : "Date"}</th>
-                      <th className="py-3.5 px-4 w-40">{state.language === "ne" ? "शाखा" : "Section"}</th>
                       <th className="py-3.5 px-4 max-w-xs">{state.language === "ne" ? "पाउने कार्यालय / व्यक्ति" : "Recipient Address"}</th>
                       <th className="py-3.5 px-4 max-w-sm">{state.language === "ne" ? "पत्रको विषय" : "Subject Title"}</th>
                       <th className="py-3.5 px-4 w-36">{state.language === "ne" ? "हस्ताक्षरकर्ता" : "Signed By"}</th>
@@ -2815,7 +2757,6 @@ ${state.senderDesignation}
                   <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-sans">
                     {chalaniRegister
                       .filter((r) => {
-                        if (filterSection !== "all" && r.sectionId !== filterSection) return false;
                         if (searchQuery.trim() !== "") {
                           const query = searchQuery.toLowerCase();
                           const ch = (r.chalaniNo || "").toLowerCase();
@@ -2835,11 +2776,6 @@ ${state.senderDesignation}
                           <td className="py-3 px-4 font-mono text-slate-500">{entry.letterNo}</td>
                           <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
                             {state.language === "ne" ? entry.dateBS : entry.dateAD}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded text-[10px]">
-                              {state.language === "ne" ? entry.sectionNameNe : entry.sectionNameEn}
-                            </span>
                           </td>
                           <td className="py-3 px-4 max-w-xs truncate font-medium text-slate-600" title={entry.recipient}>
                             {entry.recipient}
