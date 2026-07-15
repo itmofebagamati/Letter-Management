@@ -693,6 +693,7 @@ export default function App() {
   // Atomic Cloud Issue & Official Register Dispatch Flow
   const handleRegisterAndDownload = async (format: "docx" | "pdf") => {
     setIsRegisteringNow(true);
+    const originalTab = activeTab;
     try {
       const sectionId = "office";
       
@@ -720,6 +721,12 @@ export default function App() {
 
       // Set state to update active render canvas
       setState(updatedState);
+      
+      // If we are downloading a PDF and the active tab is not the editor,
+      // temporarily switch to "editor" so the #a4-sheet mounts in the DOM
+      if (format === "pdf" && originalTab !== "editor") {
+        setActiveTab("editor");
+      }
       
       // Allow DOM repaint and canvas updates
       await new Promise(resolve => setTimeout(resolve, 350));
@@ -882,6 +889,8 @@ export default function App() {
           pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
           const cleanSub = updatedState.subject.replace(/[^\w\u0900-\u097F\s]/gi, "").trim() || "Letter";
           pdf.save(`${cleanSub}_Chalani_${formattedNo}.pdf`);
+        } else {
+          throw new Error("Preview sheet element not found in DOM");
         }
       }
 
@@ -898,6 +907,9 @@ export default function App() {
       console.error("Cloud registration failed:", err);
       alert(state.language === "ne" ? "चलानी दर्ता गर्न सकिएन।" : "Failed to register Chalani in cloud.");
     } finally {
+      if (originalTab !== "editor") {
+        setActiveTab(originalTab);
+      }
       setIsRegisteringNow(false);
     }
   };
