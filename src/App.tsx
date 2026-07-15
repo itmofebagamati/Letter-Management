@@ -415,11 +415,37 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Failed to generate content.");
+        let errMsg = "Failed to generate content.";
+        try {
+          const errData = await response.json();
+          errMsg = errData.error || errMsg;
+        } catch {
+          try {
+            const rawText = await response.text();
+            if (rawText.includes("<!DOCTYPE html>") || rawText.includes("<html") || rawText.startsWith("The page c")) {
+              errMsg = state.language === "ne"
+                ? `सर्भर त्रुटि (${response.status}): अनुरोधित एआई सेवा उपलब्ध छैन वा ठीकसँग कन्फिगर गरिएको छैन।`
+                : `Server error (${response.status}): The AI service endpoint is not configured or unavailable.`;
+            } else {
+              errMsg = rawText.slice(0, 150) || errMsg;
+            }
+          } catch {
+            errMsg = `Server error (${response.status})`;
+          }
+        }
+        throw new Error(errMsg);
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        throw new Error(
+          state.language === "ne"
+            ? "सर्भरबाट अमान्य प्रतिक्रिया प्राप्त भयो (Invalid JSON Response)।"
+            : "Received an invalid response format from the server."
+        );
+      }
 
       setState((prev) => ({
         ...prev,
