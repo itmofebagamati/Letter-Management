@@ -1,4 +1,4 @@
-import React, { useState, useEffect, ReactNode } from "react";
+import React, { useState, useEffect, ReactNode, useRef } from "react";
 import {
   FileDown,
   RotateCcw,
@@ -21,7 +21,18 @@ import {
   AlertCircle,
   Bold,
   Italic,
-  Underline
+  Underline,
+  Printer,
+  Palette,
+  Undo,
+  Redo,
+  Image,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
+  Minus,
+  Eraser
 } from "lucide-react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -38,40 +49,105 @@ import {
 } from "./firebase";
 
 // HTML & Markdown formatting parser helpers for document preview
-function parseHtmlTags(html: string): ReactNode[] {
+function parseHtmlTags(html: string, counter = { current: 0 }): ReactNode[] {
   if (!html) return [];
 
-  const match = html.match(/<(b|i|u)>([\s\S]*?)<\/\1>/i);
-  if (!match) {
+  const containerRegex = /<(b|i|u|red|blue|green|purple|orange|gray|center|right|justify)>([\s\S]*?)<\/\1>/i;
+  const imgRegex = /<img\s+src="([^"]+)"(?:\s+width="([^"]+)")?\s*\/?>/i;
+  const hrRegex = /<hr\s*\/?>/i;
+
+  const matchContainer = html.match(containerRegex);
+  const matchImg = html.match(imgRegex);
+  const matchHr = html.match(hrRegex);
+
+  // Find the earliest matching tag to preserve sequential rendering order
+  let earliestMatch: { type: "container" | "img" | "hr"; index: number; matchObj: any } | null = null;
+
+  if (matchContainer) {
+    earliestMatch = { type: "container", index: matchContainer.index ?? 0, matchObj: matchContainer };
+  }
+  if (matchImg) {
+    const idx = matchImg.index ?? 0;
+    if (!earliestMatch || idx < earliestMatch.index) {
+      earliestMatch = { type: "img", index: idx, matchObj: matchImg };
+    }
+  }
+  if (matchHr) {
+    const idx = matchHr.index ?? 0;
+    if (!earliestMatch || idx < earliestMatch.index) {
+      earliestMatch = { type: "hr", index: idx, matchObj: matchHr };
+    }
+  }
+
+  if (!earliestMatch) {
     return [html];
   }
 
-  const tag = match[1].toLowerCase();
-  const outerText = match[0];
-  const innerText = match[2];
-  const index = match.index ?? 0;
-
+  const { type, index, matchObj } = earliestMatch;
+  const outerText = matchObj[0];
   const before = html.substring(0, index);
   const after = html.substring(index + outerText.length);
 
   const results: ReactNode[] = [];
 
   if (before) {
-    results.push(...parseHtmlTags(before));
+    results.push(...parseHtmlTags(before, counter));
   }
 
-  const innerContent = parseHtmlTags(innerText);
+  if (type === "container") {
+    const tag = matchObj[1].toLowerCase();
+    const innerText = matchObj[2];
+    const innerContent = parseHtmlTags(innerText, counter);
 
-  if (tag === "b") {
-    results.push(<strong key={index} className="font-bold text-slate-900">{innerContent}</strong>);
-  } else if (tag === "i") {
-    results.push(<em key={index} className="italic text-slate-800">{innerContent}</em>);
-  } else if (tag === "u") {
-    results.push(<span key={index} className="underline decoration-slate-800 decoration-1 underline-offset-2">{innerContent}</span>);
+    const elKey = `pht-${counter.current++}`;
+
+    if (tag === "b") {
+      results.push(<strong key={elKey} className="font-bold text-slate-900">{innerContent}</strong>);
+    } else if (tag === "i") {
+      results.push(<em key={elKey} className="italic text-slate-800">{innerContent}</em>);
+    } else if (tag === "u") {
+      results.push(<span key={elKey} className="underline decoration-slate-800 decoration-1 underline-offset-2">{innerContent}</span>);
+    } else if (tag === "red") {
+      results.push(<span key={elKey} className="text-red-600 font-medium">{innerContent}</span>);
+    } else if (tag === "blue") {
+      results.push(<span key={elKey} className="text-blue-600 font-medium">{innerContent}</span>);
+    } else if (tag === "green") {
+      results.push(<span key={elKey} className="text-emerald-600 font-medium">{innerContent}</span>);
+    } else if (tag === "purple") {
+      results.push(<span key={elKey} className="text-purple-600 font-medium">{innerContent}</span>);
+    } else if (tag === "orange") {
+      results.push(<span key={elKey} className="text-amber-600 font-medium">{innerContent}</span>);
+    } else if (tag === "gray") {
+      results.push(<span key={elKey} className="text-slate-500">{innerContent}</span>);
+    } else if (tag === "center") {
+      results.push(<div key={elKey} className="text-center my-1 w-full block">{innerContent}</div>);
+    } else if (tag === "right") {
+      results.push(<div key={elKey} className="text-right my-1 w-full block">{innerContent}</div>);
+    } else if (tag === "justify") {
+      results.push(<div key={elKey} className="text-justify my-1 w-full block leading-relaxed">{innerContent}</div>);
+    }
+  } else if (type === "img") {
+    const src = matchObj[1];
+    const widthVal = matchObj[2] || "150";
+    const elKey = `pht-${counter.current++}`;
+    results.push(
+      <span key={elKey} className="my-2.5 flex flex-col items-center select-none">
+        <img 
+          src={src} 
+          alt="Embedded Asset" 
+          style={{ maxWidth: "100%", width: `${widthVal}px` }} 
+          className="rounded border border-slate-200 shadow-sm object-contain"
+          referrerPolicy="no-referrer"
+        />
+      </span>
+    );
+  } else if (type === "hr") {
+    const elKey = `pht-${counter.current++}`;
+    results.push(<hr key={elKey} className="my-3 border-t border-slate-300 w-full" />);
   }
 
   if (after) {
-    results.push(...parseHtmlTags(after));
+    results.push(...parseHtmlTags(after, counter));
   }
 
   return results;
@@ -201,6 +277,94 @@ export default function App() {
     qrCodeLabel: "यस पत्रको आधिकारिकता जाँच गर्न क्युआर कोड स्क्यान गर्नुहोस् ।"
   });
 
+  // Rich Text Editor History Management for Undo/Redo
+  const [undoStack, setUndoStack] = useState<string[]>([]);
+  const [redoStack, setRedoStack] = useState<string[]>([]);
+  const lastSavedBodyRef = useRef(state.body);
+
+  const pushToHistory = (currentBody: string) => {
+    if (currentBody !== lastSavedBodyRef.current) {
+      setUndoStack((prev) => [...prev, lastSavedBodyRef.current]);
+      setRedoStack([]); // Clear redo on any new action
+      lastSavedBodyRef.current = currentBody;
+    }
+  };
+
+  // Debounced save for live keyboard typing inside textarea
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      pushToHistory(state.body);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [state.body]);
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const prevBody = undoStack[undoStack.length - 1];
+    const newUndoStack = undoStack.slice(0, -1);
+    
+    setUndoStack(newUndoStack);
+    setRedoStack((prev) => [...prev, state.body]);
+    
+    lastSavedBodyRef.current = prevBody;
+    setState((prev) => ({ ...prev, body: prevBody }));
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const nextBody = redoStack[redoStack.length - 1];
+    const newRedoStack = redoStack.slice(0, -1);
+
+    setUndoStack((prev) => [...prev, state.body]);
+    setRedoStack(newRedoStack);
+
+    lastSavedBodyRef.current = nextBody;
+    setState((prev) => ({ ...prev, body: nextBody }));
+  };
+
+  // Insert image via base64 upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleInsertImageClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (!base64) return;
+
+      const textarea = document.getElementById("letter-body-textarea") as HTMLTextAreaElement;
+      if (!textarea) return;
+
+      const text = state.body;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+
+      const beforeText = text.substring(0, start);
+      const afterText = text.substring(end);
+
+      const imageTag = `<img src="${base64}" width="200"/>`;
+      const updatedBody = `${beforeText}${imageTag}${afterText}`;
+
+      // Push history immediately before applying change
+      pushToHistory(text);
+
+      setState((prev) => ({ ...prev, body: updatedBody }));
+      
+      // Clear file selection to allow selecting same file again
+      e.target.value = "";
+    };
+    reader.readAsDataURL(file);
+  };
+
   // AI assistant loading and prompt states
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLetterType, setAiLetterType] = useState("request");
@@ -229,6 +393,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"editor" | "register">("editor");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterSection, setFilterSection] = useState("all");
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
 
   // Bulk Generation States
   const [bulkRecipientsRaw, setBulkRecipientsRaw] = useState<string>(
@@ -281,12 +447,22 @@ export default function App() {
         web = "daokathmandu.moha.gov.np";
       }
 
+      let dept = isNe ? preset.department : preset.departmentEn;
+      if (prev.officeSection && prev.officeSection !== "none" && prev.officeSection !== "custom") {
+        const matched = OFFICE_SECTIONS.find((sec) => sec.id === prev.officeSection);
+        if (matched) {
+          dept = isNe ? matched.nameNe : matched.nameEn;
+        }
+      } else if (prev.officeSection === "custom" || prev.officeDepartment) {
+        dept = prev.officeDepartment;
+      }
+
       return {
         ...prev,
         language: lang,
         officeName: isNe ? preset.name : preset.nameEn,
         officeProvince: isNe ? preset.province : preset.provinceEn,
-        officeDepartment: isNe ? preset.department : preset.departmentEn,
+        officeDepartment: dept,
         officeAddress: isNe ? preset.address : preset.addressEn,
         senderName: isNe ? preset.senderName.split(" (")[0] : preset.senderName,
         senderDesignation: isNe ? "शाखा अधिकृत" : "Section Officer",
@@ -344,6 +520,7 @@ export default function App() {
         presetId,
         officeName: isNe ? preset.name : preset.nameEn,
         officeProvince: isNe ? preset.province : preset.provinceEn,
+        officeSection: "none",
         officeDepartment: isNe ? preset.department : preset.departmentEn,
         officeAddress: isNe ? preset.address : preset.addressEn,
         emblemType: preset.emblemType,
@@ -552,6 +729,98 @@ export default function App() {
     });
   };
 
+  // Native Print / Print-to-PDF Generator
+  const handlePrintDocument = () => {
+    const sheet = document.getElementById("a4-sheet");
+    if (!sheet) return;
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert(state.language === "ne" ? "कृपया प्रिन्ट विन्डो खोल्नको लागि पपअपहरू अनुमति दिनुहोस्।" : "Please allow popups to open the print dialog.");
+      return;
+    }
+
+    // Gather and serialize all stylesheets to retain Tailwind & google font styles
+    let stylesHtml = "";
+    try {
+      for (const sheetObj of Array.from(document.styleSheets)) {
+        try {
+          if (sheetObj.href && !sheetObj.href.startsWith(window.location.origin)) {
+            continue;
+          }
+          const rules = sheetObj.cssRules || sheetObj.rules;
+          if (rules) {
+            stylesHtml += `<style>`;
+            for (const rule of Array.from(rules)) {
+              stylesHtml += rule.cssText + "\n";
+            }
+            stylesHtml += `</style>`;
+          }
+        } catch (e) {
+          // Fallback to reading original style tags
+        }
+      }
+    } catch (err) {
+      console.warn("Could not read stylesheets for printing:", err);
+    }
+
+    // Include existing inline style tags
+    document.querySelectorAll("style").forEach((st) => {
+      stylesHtml += st.outerHTML;
+    });
+
+    // Write content with exact CSS overrides for pristine A4 layout inside browser print engine
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${state.subject || "Official Letter"}</title>
+          ${stylesHtml}
+          <style>
+            @page {
+              size: A4;
+              margin: 0;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              background-color: white !important;
+              display: flex;
+              justify-content: center;
+              align-items: flex-start;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            #a4-sheet {
+              box-shadow: none !important;
+              border: none !important;
+              width: 210mm !important;
+              min-height: 297mm !important;
+              height: auto !important;
+              margin: 0 !important;
+              padding: 20mm !important;
+              box-sizing: border-box !important;
+            }
+          </style>
+        </head>
+        <body>
+          <div id="a4-sheet" style="${sheet.getAttribute("style") || ""}">
+            ${sheet.innerHTML}
+          </div>
+          <script>
+            window.addEventListener('DOMContentLoaded', () => {
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 600);
+            });
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   // PDF file downloader
   const handleDownloadPdf = async () => {
     setIsDownloadingPdf(true);
@@ -592,7 +861,42 @@ export default function App() {
         scrollX: 0,
         scrollY: 0,
         onclone: (clonedDoc) => {
-          // 1. Proxy getComputedStyle on the cloned document's defaultView (window)
+          // Extract and serialize all document stylesheets with oklch removed to prevent html2canvas parser crashes
+          let cssText = "";
+          try {
+            for (const sheetObj of Array.from(document.styleSheets)) {
+              try {
+                if (sheetObj.href && !sheetObj.href.startsWith(window.location.origin)) {
+                  continue;
+                }
+                const rules = sheetObj.cssRules || sheetObj.rules;
+                if (rules) {
+                  for (const rule of Array.from(rules)) {
+                    cssText += rule.cssText + "\n";
+                  }
+                }
+              } catch (e) {
+                // skip cross-origin stylesheet errors
+              }
+            }
+          } catch (err) {
+            console.error("Failed to read stylesheets:", err);
+          }
+
+          // Replace all oklch values in the CSS text
+          const sanitizedCss = replaceOklchInString(cssText);
+
+          // Remove all existing style and link tags in clonedDoc to prevent secondary parsing crashes
+          clonedDoc.querySelectorAll("style, link[rel='stylesheet']").forEach((el) => {
+            el.remove();
+          });
+
+          // Create and append a single, clean style tag with the sanitized CSS
+          const newStyle = clonedDoc.createElement("style");
+          newStyle.textContent = sanitizedCss;
+          clonedDoc.head.appendChild(newStyle);
+
+          // Proxy getComputedStyle on the cloned document's defaultView (window)
           // so any dynamically extracted styling returns fallback standard RGB instead of oklch
           const clonedWindow = clonedDoc.defaultView;
           if (clonedWindow) {
@@ -620,14 +924,7 @@ export default function App() {
             };
           }
 
-          // 2. Sanitize all stylesheet blocks in the cloned document
-          clonedDoc.querySelectorAll("style").forEach((styleEl) => {
-            if (styleEl.textContent && styleEl.textContent.includes("oklch")) {
-              styleEl.textContent = replaceOklchInString(styleEl.textContent);
-            }
-          });
-
-          // 3. Sanitize inline style attributes in the cloned document
+          // Sanitize inline style attributes in the cloned document
           clonedDoc.querySelectorAll("[style]").forEach((el) => {
             const htmlEl = el as HTMLElement;
             const styleAttr = htmlEl.getAttribute("style");
@@ -748,9 +1045,9 @@ export default function App() {
       await logChalaniEntry({
         chalaniNo: formattedNo,
         letterNo: updatedState.letterNo,
-        sectionId: sectionId,
-        sectionNameNe: "",
-        sectionNameEn: "",
+        sectionId: updatedState.officeSection || "none",
+        sectionNameNe: updatedState.officeSection === "custom" ? updatedState.officeDepartment : (OFFICE_SECTIONS.find((s) => s.id === updatedState.officeSection)?.nameNe || ""),
+        sectionNameEn: updatedState.officeSection === "custom" ? updatedState.officeDepartment : (OFFICE_SECTIONS.find((s) => s.id === updatedState.officeSection)?.nameEn || ""),
         recipient: recipientString,
         subject: updatedState.subject,
         dateBS: updatedState.dateBS,
@@ -828,6 +1125,41 @@ export default function App() {
             scrollX: 0,
             scrollY: 0,
             onclone: (clonedDoc) => {
+              // Extract and serialize all document stylesheets with oklch removed to prevent html2canvas parser crashes
+              let cssText = "";
+              try {
+                for (const sheetObj of Array.from(document.styleSheets)) {
+                  try {
+                    if (sheetObj.href && !sheetObj.href.startsWith(window.location.origin)) {
+                      continue;
+                    }
+                    const rules = sheetObj.cssRules || sheetObj.rules;
+                    if (rules) {
+                      for (const rule of Array.from(rules)) {
+                        cssText += rule.cssText + "\n";
+                      }
+                    }
+                  } catch (e) {
+                    // skip cross-origin stylesheet errors
+                  }
+                }
+              } catch (err) {
+                console.error("Failed to read stylesheets:", err);
+              }
+
+              // Replace all oklch values in the CSS text
+              const sanitizedCss = replaceOklchInString(cssText);
+
+              // Remove all existing style and link tags in clonedDoc to prevent secondary parsing crashes
+              clonedDoc.querySelectorAll("style, link[rel='stylesheet']").forEach((el) => {
+                el.remove();
+              });
+
+              // Create and append a single, clean style tag with the sanitized CSS
+              const newStyle = clonedDoc.createElement("style");
+              newStyle.textContent = sanitizedCss;
+              clonedDoc.head.appendChild(newStyle);
+
               const clonedWindow = clonedDoc.defaultView;
               if (clonedWindow) {
                 const originalGetComputedStyle = clonedWindow.getComputedStyle;
@@ -853,11 +1185,7 @@ export default function App() {
                   });
                 };
               }
-              clonedDoc.querySelectorAll("style").forEach((styleEl) => {
-                if (styleEl.textContent && styleEl.textContent.includes("oklch")) {
-                  styleEl.textContent = replaceOklchInString(styleEl.textContent);
-                }
-              });
+
               clonedDoc.querySelectorAll("[style]").forEach((el) => {
                 const htmlEl = el as HTMLElement;
                 const styleAttr = htmlEl.getAttribute("style");
@@ -1307,7 +1635,7 @@ ${state.senderDesignation}
   };
 
   // Handle rich-text formatting tags wrapper for letter-body-textarea
-  const handleFormatText = (tag: "b" | "i" | "u") => {
+  const handleFormatText = (tag: "b" | "i" | "u" | "red" | "blue" | "green" | "purple" | "orange" | "gray" | "center" | "right" | "justify" | "hr") => {
     const textarea = document.getElementById("letter-body-textarea") as HTMLTextAreaElement;
     if (!textarea) return;
 
@@ -1319,24 +1647,29 @@ ${state.senderDesignation}
     const beforeText = text.substring(0, start);
     const afterText = text.substring(end);
 
-    let openTag = `<b>`;
-    let closeTag = `</b>`;
-    if (tag === "i") {
-      openTag = `<i>`;
-      closeTag = `</i>`;
-    } else if (tag === "u") {
-      openTag = `<u>`;
-      closeTag = `</u>`;
+    // Push history before modification
+    pushToHistory(text);
+
+    let formattedText = "";
+    let cursorOffset = 0;
+
+    if (tag === "hr") {
+      const hrTag = "<hr/>";
+      formattedText = `${beforeText}${hrTag}${afterText}`;
+      cursorOffset = hrTag.length;
+    } else {
+      const openTag = `<${tag}>`;
+      const closeTag = `</${tag}>`;
+      formattedText = `${beforeText}${openTag}${selectedText}${closeTag}${afterText}`;
+      cursorOffset = openTag.length + selectedText.length + closeTag.length;
     }
 
-    const formattedText = `${beforeText}${openTag}${selectedText}${closeTag}${afterText}`;
     setState((prev) => ({ ...prev, body: formattedText }));
 
     // Put focus back onto the textarea and preserve selection bounds
     setTimeout(() => {
       textarea.focus();
-      const offset = openTag.length + selectedText.length + closeTag.length;
-      const newCursorPos = start + offset;
+      const newCursorPos = start + cursorOffset;
       textarea.setSelectionRange(newCursorPos, newCursorPos);
     }, 20);
   };
@@ -1452,6 +1785,15 @@ ${state.senderDesignation}
               <FileDown className="w-4 h-4" />
             )}
             {isDownloadingPdf || (isAutoChalani && isRegisteringNow) ? (state.language === "ne" ? "चलानी दर्ता..." : "Registering...") : (state.language === "ne" ? "पीडीएफ (.pdf)" : "PDF (.pdf)")}
+          </button>
+
+          <button
+            id="header-print-btn"
+            onClick={handlePrintDocument}
+            className="px-4 py-2 bg-indigo-600 text-white text-xs md:text-sm font-medium rounded-md hover:bg-indigo-700 flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+          >
+            <Printer className="w-4 h-4" />
+            {state.language === "ne" ? "प्रिन्ट / PDF" : "Print / PDF"}
           </button>
         </div>
       </nav>
@@ -1602,6 +1944,72 @@ ${state.senderDesignation}
                 placeholder="आर्थिक मामिला तथा योजना मन्त्रालय"
                 className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm font-semibold text-red-700 focus:ring-2 focus:ring-red-500 focus:outline-none bg-white transition-all"
               />
+            </div>
+
+            {/* Section / Branch Selector */}
+            <div className="space-y-1 bg-slate-50 p-2.5 rounded-md border border-slate-200/60">
+              <label className="text-xs font-semibold text-slate-700 block">
+                {state.language === "ne" ? "कार्यालयको शाखा / विभाग (लेटरहेडको लागि)" : "Office Section / Branch (For Letterhead)"}
+              </label>
+              <select
+                id="office-section-select"
+                value={state.officeSection || "none"}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "none") {
+                    setState((prev) => ({
+                      ...prev,
+                      officeSection: "none",
+                      officeDepartment: ""
+                    }));
+                  } else if (val === "custom") {
+                    setState((prev) => ({
+                      ...prev,
+                      officeSection: "custom",
+                      officeDepartment: prev.officeDepartment || (state.language === "ne" ? "अन्य शाखा" : "Custom Section")
+                    }));
+                  } else {
+                    const matched = OFFICE_SECTIONS.find((sec) => sec.id === val);
+                    if (matched) {
+                      setState((prev) => ({
+                        ...prev,
+                        officeSection: val,
+                        officeDepartment: state.language === "ne" ? matched.nameNe : matched.nameEn
+                      }));
+                    }
+                  }
+                }}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-red-500 focus:outline-none bg-white transition-all outline-none"
+              >
+                <option value="none">{state.language === "ne" ? "शाखा नराख्ने (No Section)" : "No Section"}</option>
+                {OFFICE_SECTIONS.map((sec) => (
+                  <option key={sec.id} value={sec.id}>
+                    {state.language === "ne" ? sec.nameNe : sec.nameEn}
+                  </option>
+                ))}
+              </select>
+
+              {/* Dynamic Section Override Input - shown whenever section is selected to allow fine tuning */}
+              {state.officeSection && state.officeSection !== "none" && (
+                <div className="mt-2.5 pt-2 border-t border-slate-200/50">
+                  <label className="text-[11px] font-bold text-slate-500 block mb-1">
+                    {state.language === "ne" ? "शाखाको नाम (लेटरहेडमा देखिने रुप):" : "Section Name (As it appears on Letterhead):"}
+                  </label>
+                  <input
+                    id="office-department-input"
+                    type="text"
+                    value={state.officeDepartment}
+                    onChange={(e) => setState({ ...state, officeDepartment: e.target.value })}
+                    placeholder={state.language === "ne" ? "प्रशासन शाखा" : "Administration Section"}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-md text-xs focus:ring-2 focus:ring-red-500 focus:outline-none bg-white transition-all"
+                  />
+                  <p className="text-[9px] text-slate-400 mt-1 leading-normal">
+                    {state.language === "ne" 
+                      ? "* यो शाखा चयनले चलानी दर्ता प्रणाली वा नम्बरिङलाई असर गर्दैन। चलानी सुरक्षित रूपमा मन्त्रालय/कार्यालय स्तरमा एकीकृत रहन्छ।"
+                      : "* Changing the section only formats the letterhead. The central sequential Chalani numbering remains unified."}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -1941,7 +2349,31 @@ ${state.senderDesignation}
                 </label>
                 
                 {/* Formatting Toolbar */}
-                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded p-1 select-none">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md p-1 select-none flex-wrap">
+                  {/* Undo / Redo */}
+                  <button
+                    type="button"
+                    title={state.language === "ne" ? "पूर्वस्थिति (Undo)" : "Undo"}
+                    onClick={handleUndo}
+                    disabled={undoStack.length === 0}
+                    className="p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent rounded transition-colors flex items-center justify-center cursor-pointer"
+                  >
+                    <Undo className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    title={state.language === "ne" ? "पुनरावृत्ति (Redo)" : "Redo"}
+                    onClick={handleRedo}
+                    disabled={redoStack.length === 0}
+                    className="p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent rounded transition-colors flex items-center justify-center cursor-pointer"
+                  >
+                    <Redo className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Divider */}
+                  <div className="w-[1px] bg-slate-200 h-4 mx-0.5" />
+
+                  {/* Formatting */}
                   <button
                     type="button"
                     title={state.language === "ne" ? "मोटो अक्षर (Bold)" : "Bold (Ctrl+B)"}
@@ -1966,6 +2398,114 @@ ${state.senderDesignation}
                   >
                     <Underline className="w-3.5 h-3.5" />
                   </button>
+
+                  {/* Divider */}
+                  <div className="w-[1px] bg-slate-200 h-4 mx-0.5" />
+
+                  {/* Alignments */}
+                  <button
+                    type="button"
+                    title={state.language === "ne" ? "बीचमा (Center Align)" : "Center Align"}
+                    onClick={() => handleFormatText("center")}
+                    className="p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded transition-colors flex items-center justify-center cursor-pointer"
+                  >
+                    <AlignCenter className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    title={state.language === "ne" ? "दायाँ (Right Align)" : "Right Align"}
+                    onClick={() => handleFormatText("right")}
+                    className="p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded transition-colors flex items-center justify-center cursor-pointer"
+                  >
+                    <AlignRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    title={state.language === "ne" ? "दुबै तर्फ मिलाउनुहोस् (Justified Align)" : "Justified Align"}
+                    onClick={() => handleFormatText("justify")}
+                    className="p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded transition-colors flex items-center justify-center cursor-pointer"
+                  >
+                    <AlignJustify className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Divider */}
+                  <div className="w-[1px] bg-slate-200 h-4 mx-0.5" />
+
+                  {/* Insert Elements */}
+                  <button
+                    type="button"
+                    title={state.language === "ne" ? "तस्वीर थप्नुहोस् (Insert Image)" : "Insert Image"}
+                    onClick={handleInsertImageClick}
+                    className="p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded transition-colors flex items-center justify-center cursor-pointer"
+                  >
+                    <Image className="w-3.5 h-3.5" />
+                  </button>
+                  
+                  {/* Hidden Image File Input */}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageFileChange}
+                    accept="image/*"
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    title={state.language === "ne" ? "तेर्सो रेखा (Horizontal Rule)" : "Horizontal Rule"}
+                    onClick={() => handleFormatText("hr")}
+                    className="p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded transition-colors flex items-center justify-center cursor-pointer"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Divider */}
+                  <div className="w-[1px] bg-slate-200 h-4 mx-0.5" />
+
+                  {/* Color Swatch Label / Icon */}
+                  <div className="flex items-center gap-1 text-slate-400 pl-0.5" title={state.language === "ne" ? "अक्षर रङ्ग" : "Text Color"}>
+                    <Palette className="w-3.5 h-3.5 text-slate-400" />
+                  </div>
+
+                  {/* Color Swatches */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleFormatText("red")}
+                      title={state.language === "ne" ? "रातो (Red)" : "Red"}
+                      className="w-3.5 h-3.5 rounded-full bg-red-600 border border-slate-300 hover:scale-125 transition-transform cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleFormatText("blue")}
+                      title={state.language === "ne" ? "नीलो (Blue)" : "Blue"}
+                      className="w-3.5 h-3.5 rounded-full bg-blue-600 border border-slate-300 hover:scale-125 transition-transform cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleFormatText("green")}
+                      title={state.language === "ne" ? "हरियो (Green)" : "Green"}
+                      className="w-3.5 h-3.5 rounded-full bg-emerald-600 border border-slate-300 hover:scale-125 transition-transform cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleFormatText("purple")}
+                      title={state.language === "ne" ? "बैजनी (Purple)" : "Purple"}
+                      className="w-3.5 h-3.5 rounded-full bg-purple-600 border border-slate-300 hover:scale-125 transition-transform cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleFormatText("orange")}
+                      title={state.language === "ne" ? "सुन्तला (Orange)" : "Orange"}
+                      className="w-3.5 h-3.5 rounded-full bg-amber-500 border border-slate-300 hover:scale-125 transition-transform cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleFormatText("gray")}
+                      title={state.language === "ne" ? "फुस्रो (Gray)" : "Gray"}
+                      className="w-3.5 h-3.5 rounded-full bg-slate-500 border border-slate-300 hover:scale-125 transition-transform cursor-pointer"
+                    />
+                  </div>
                 </div>
               </div>
               <textarea
@@ -2356,6 +2896,15 @@ ${state.senderDesignation}
               </button>
 
               <button
+                id="preview-print-btn"
+                onClick={handlePrintDocument}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-md shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                {state.language === "ne" ? "प्रिन्ट / PDF बचत" : "Print / Save PDF"}
+              </button>
+
+              <button
                 id="preview-download-docx"
                 onClick={handleDownloadDocx}
                 disabled={isDownloading}
@@ -2715,7 +3264,7 @@ ${state.senderDesignation}
               </div>
 
               {/* Filtering Controls */}
-              <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+              <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto items-center">
                 <input
                   type="text"
                   placeholder={state.language === "ne" ? "विषय, चलानी नं. वा पाउने कार्यालय खोज्नुहोस्..." : "Search subject, ref, recipient..."}
@@ -2726,12 +3275,81 @@ ${state.senderDesignation}
 
                 <button
                   onClick={loadRegister}
-                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer text-slate-700"
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer text-slate-700 whitespace-nowrap"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>{state.language === "ne" ? "रिफ्रेस" : "Refresh"}</span>
                 </button>
               </div>
+            </div>
+
+            {/* Extended Advanced Filters Bar */}
+            <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/30 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
+              {/* Left Side: Section and Date Range selectors */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full xl:w-auto flex-1">
+                {/* Section filter */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    {state.language === "ne" ? "शाखा फिल्टर" : "Filter by Section"}
+                  </label>
+                  <select
+                    id="filter-section-dropdown"
+                    value={filterSection}
+                    onChange={(e) => setFilterSection(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-md text-xs focus:ring-2 focus:ring-red-500 focus:outline-none bg-white font-sans text-slate-700"
+                  >
+                    <option value="all">{state.language === "ne" ? "सबै शाखाहरू (All Sections)" : "All Sections"}</option>
+                    <option value="none">{state.language === "ne" ? "शाखा नभएका (No Section)" : "No Section"}</option>
+                    {OFFICE_SECTIONS.map((sec) => (
+                      <option key={sec.id} value={sec.id}>
+                        {state.language === "ne" ? sec.nameNe : sec.nameEn}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Start Date */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    {state.language === "ne" ? "सुरु मिति (A.D. / YYYY-MM-DD)" : "Start Date (A.D.)"}
+                  </label>
+                  <input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-md text-xs focus:ring-2 focus:ring-red-500 focus:outline-none bg-white font-sans text-slate-700"
+                  />
+                </div>
+
+                {/* End Date */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    {state.language === "ne" ? "अन्तिम मिति (A.D. / YYYY-MM-DD)" : "End Date (A.D.)"}
+                  </label>
+                  <input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-md text-xs focus:ring-2 focus:ring-red-500 focus:outline-none bg-white font-sans text-slate-700"
+                  />
+                </div>
+              </div>
+
+              {/* Right Side: Clear Filters */}
+              {(filterSection !== "all" || filterStartDate !== "" || filterEndDate !== "") && (
+                <div className="flex items-center gap-2 self-end xl:self-auto shrink-0 mt-2 xl:mt-0">
+                  <button
+                    onClick={() => {
+                      setFilterSection("all");
+                      setFilterStartDate("");
+                      setFilterEndDate("");
+                    }}
+                    className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/60 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {state.language === "ne" ? "फिल्टरहरू हटाउनुहोस्" : "Clear Filters"}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Table Content */}
@@ -2760,6 +3378,7 @@ ${state.senderDesignation}
                       <th className="py-3.5 px-4 text-center w-24">{state.language === "ne" ? "चलानी नं." : "Ref No."}</th>
                       <th className="py-3.5 px-4 w-28">{state.language === "ne" ? "पत्र संख्या" : "Letter No."}</th>
                       <th className="py-3.5 px-4 w-32">{state.language === "ne" ? "दर्ता मिति" : "Date"}</th>
+                      <th className="py-3.5 px-4 w-40">{state.language === "ne" ? "शाखा" : "Section"}</th>
                       <th className="py-3.5 px-4 max-w-xs">{state.language === "ne" ? "पाउने कार्यालय / व्यक्ति" : "Recipient Address"}</th>
                       <th className="py-3.5 px-4 max-w-sm">{state.language === "ne" ? "पत्रको विषय" : "Subject Title"}</th>
                       <th className="py-3.5 px-4 w-36">{state.language === "ne" ? "हस्ताक्षरकर्ता" : "Signed By"}</th>
@@ -2767,8 +3386,35 @@ ${state.senderDesignation}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-sans">
-                    {chalaniRegister
-                      .filter((r) => {
+                    {(() => {
+                      const filteredList = chalaniRegister.filter((r) => {
+                        // 1. Section Filter
+                        if (filterSection !== "all") {
+                          if (filterSection === "none") {
+                            const sec = r.sectionId;
+                            if (sec && sec !== "none" && sec !== "office") {
+                              return false;
+                            }
+                          } else {
+                            if (r.sectionId !== filterSection) {
+                              return false;
+                            }
+                          }
+                        }
+
+                        // 2. Date Range Filter
+                        if (filterStartDate !== "") {
+                          if (!r.dateAD || r.dateAD < filterStartDate) {
+                            return false;
+                          }
+                        }
+                        if (filterEndDate !== "") {
+                          if (!r.dateAD || r.dateAD > filterEndDate) {
+                            return false;
+                          }
+                        }
+
+                        // 3. Search Query Filter
                         if (searchQuery.trim() !== "") {
                           const query = searchQuery.toLowerCase();
                           const ch = (r.chalaniNo || "").toLowerCase();
@@ -2776,11 +3422,24 @@ ${state.senderDesignation}
                           const rec = (r.recipient || "").toLowerCase();
                           const sub = (r.subject || "").toLowerCase();
                           const sdr = (r.sender || "").toLowerCase();
-                          return ch.includes(query) || ln.includes(query) || rec.includes(query) || sub.includes(query) || sdr.includes(query);
+                          const secNameNe = (r.sectionNameNe || "").toLowerCase();
+                          const secNameEn = (r.sectionNameEn || "").toLowerCase();
+                          return ch.includes(query) || ln.includes(query) || rec.includes(query) || sub.includes(query) || sdr.includes(query) || secNameNe.includes(query) || secNameEn.includes(query);
                         }
                         return true;
-                      })
-                      .map((entry) => (
+                      });
+
+                      if (filteredList.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={8} className="py-12 text-center text-slate-400 font-medium">
+                              {state.language === "ne" ? "फिल्टर गरिएका सर्तहरूसँग मेल खाने कुनै पनि चलानी फेला परेन।" : "No matches found with selected filters."}
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return filteredList.map((entry) => (
                         <tr key={entry.id} className="hover:bg-slate-50/70 transition-colors">
                           <td className="py-3 px-4 font-bold text-center text-red-600 bg-red-50/30">
                             {entry.chalaniNo}
@@ -2788,6 +3447,17 @@ ${state.senderDesignation}
                           <td className="py-3 px-4 font-mono text-slate-500">{entry.letterNo}</td>
                           <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
                             {state.language === "ne" ? entry.dateBS : entry.dateAD}
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-slate-600">
+                            {entry.sectionNameNe || entry.sectionNameEn ? (
+                              <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200 text-[10px] whitespace-nowrap">
+                                {state.language === "ne" ? (entry.sectionNameNe || entry.sectionNameEn) : (entry.sectionNameEn || entry.sectionNameNe)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 italic text-[10px]">
+                                {state.language === "ne" ? "केन्द्रीय" : "Central"}
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 px-4 max-w-xs truncate font-medium text-slate-600" title={entry.recipient}>
                             {entry.recipient}
@@ -2802,14 +3472,15 @@ ${state.senderDesignation}
                             <div className="flex gap-1.5 justify-end">
                               <button
                                 onClick={() => handleLoadFromRegister(entry)}
-                                className="px-2.5 py-1 bg-red-50 text-red-700 rounded border border-red-100 hover:bg-red-100 transition-colors cursor-pointer text-[10px] font-bold"
+                                className="px-2.5 py-1 bg-red-50 text-red-700 rounded border border-red-100 hover:bg-red-100 transition-colors cursor-pointer text-[10px] font-bold whitespace-nowrap"
                               >
                                 {state.language === "ne" ? "बोर्डमा खोल्नुहोस्" : "Edit / Open"}
                               </button>
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      ));
+                    })()}
                   </tbody>
                 </table>
               )}

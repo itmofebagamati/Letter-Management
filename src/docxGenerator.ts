@@ -21,13 +21,39 @@ interface StyleState {
   bold?: boolean;
   italics?: boolean;
   underline?: boolean;
+  color?: string;
 }
 
 function parseHtmlToRuns(html: string, parentStyles: StyleState, font: string, size: number): TextRun[] {
   if (!html) return [];
 
-  const match = html.match(/<(b|i|u)>([\s\S]*?)<\/\1>/i);
-  if (!match) {
+  const containerRegex = /<(b|i|u|red|blue|green|purple|orange|gray|center|right|justify)>([\s\S]*?)<\/\1>/i;
+  const imgRegex = /<img\s+src="([^"]+)"(?:\s+width="([^"]+)")?\s*\/?>/i;
+  const hrRegex = /<hr\s*\/?>/i;
+
+  const matchContainer = html.match(containerRegex);
+  const matchImg = html.match(imgRegex);
+  const matchHr = html.match(hrRegex);
+
+  let earliestMatch: { type: "container" | "img" | "hr"; index: number; matchObj: any } | null = null;
+
+  if (matchContainer) {
+    earliestMatch = { type: "container", index: matchContainer.index ?? 0, matchObj: matchContainer };
+  }
+  if (matchImg) {
+    const idx = matchImg.index ?? 0;
+    if (!earliestMatch || idx < earliestMatch.index) {
+      earliestMatch = { type: "img", index: idx, matchObj: matchImg };
+    }
+  }
+  if (matchHr) {
+    const idx = matchHr.index ?? 0;
+    if (!earliestMatch || idx < earliestMatch.index) {
+      earliestMatch = { type: "hr", index: idx, matchObj: matchHr };
+    }
+  }
+
+  if (!earliestMatch) {
     return [
       new TextRun({
         text: html,
@@ -36,15 +62,13 @@ function parseHtmlToRuns(html: string, parentStyles: StyleState, font: string, s
         bold: parentStyles.bold || undefined,
         italics: parentStyles.italics || undefined,
         underline: parentStyles.underline ? { type: UnderlineType.SINGLE } : undefined,
+        color: parentStyles.color || undefined,
       }),
     ];
   }
 
-  const tag = match[1].toLowerCase();
-  const outerText = match[0];
-  const innerText = match[2];
-  const index = match.index ?? 0;
-
+  const { type, index, matchObj } = earliestMatch;
+  const outerText = matchObj[0];
   const before = html.substring(0, index);
   const after = html.substring(index + outerText.length);
 
@@ -54,14 +78,47 @@ function parseHtmlToRuns(html: string, parentStyles: StyleState, font: string, s
     runs.push(...parseHtmlToRuns(before, parentStyles, font, size));
   }
 
-  const currentStyles: StyleState = {
-    ...parentStyles,
-    bold: tag === "b" ? true : parentStyles.bold,
-    italics: tag === "i" ? true : parentStyles.italics,
-    underline: tag === "u" ? true : parentStyles.underline,
-  };
+  if (type === "container") {
+    const tag = matchObj[1].toLowerCase();
+    const innerText = matchObj[2];
 
-  runs.push(...parseHtmlToRuns(innerText, currentStyles, font, size));
+    let tagColor = parentStyles.color;
+    if (tag === "red") tagColor = "DC2626";
+    else if (tag === "blue") tagColor = "2563EB";
+    else if (tag === "green") tagColor = "10B981";
+    else if (tag === "purple") tagColor = "7C3AED";
+    else if (tag === "orange") tagColor = "F59E0B";
+    else if (tag === "gray") tagColor = "6B7280";
+
+    const currentStyles: StyleState = {
+      ...parentStyles,
+      bold: tag === "b" ? true : parentStyles.bold,
+      italics: tag === "i" ? true : parentStyles.italics,
+      underline: tag === "u" ? true : parentStyles.underline,
+      color: tagColor,
+    };
+
+    runs.push(...parseHtmlToRuns(innerText, currentStyles, font, size));
+  } else if (type === "img") {
+    runs.push(
+      new TextRun({
+        text: " [तस्वीर / Image] ",
+        font,
+        size,
+        italics: true,
+        color: "4B5563",
+      })
+    );
+  } else if (type === "hr") {
+    runs.push(
+      new TextRun({
+        text: " ____________________________________ ",
+        font,
+        size,
+        color: "D1D5DB",
+      })
+    );
+  }
 
   if (after) {
     runs.push(...parseHtmlToRuns(after, parentStyles, font, size));
@@ -433,11 +490,21 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
     const paragraphs = state.body.split("\n\n");
     paragraphs.forEach((pText) => {
       if (!pText.trim()) return;
+
+      let alignment: any = AlignmentType.LEFT;
+      if (/<center>/i.test(pText)) {
+        alignment = AlignmentType.CENTER;
+      } else if (/<right>/i.test(pText)) {
+        alignment = AlignmentType.RIGHT;
+      } else if (/<justify>/i.test(pText)) {
+        alignment = AlignmentType.JUSTIFIED;
+      }
+
       docChildren.push(
         new Paragraph({
-          alignment: AlignmentType.LEFT,
+          alignment: alignment,
           spacing: { after: 120, line: 360 }, // Spacing after paragraph and 1.5 line height
-          indent: { firstLine: 400 }, // Standard paragraph indent
+          indent: alignment === AlignmentType.LEFT ? { firstLine: 400 } : undefined, // Standard paragraph indent only for left aligned
           children: parseTextToRuns(pText, isNepali, 22),
         })
       );
