@@ -11,9 +11,74 @@ import {
   BorderStyle,
   ImageRun,
   UnderlineType,
-  HeightRule
+  HeightRule,
+  Footer
 } from "docx";
 import { LetterState } from "./types";
+import QRCode from "qrcode";
+
+interface StyleState {
+  bold?: boolean;
+  italics?: boolean;
+  underline?: boolean;
+}
+
+function parseHtmlToRuns(html: string, parentStyles: StyleState, font: string, size: number): TextRun[] {
+  if (!html) return [];
+
+  const match = html.match(/<(b|i|u)>([\s\S]*?)<\/\1>/i);
+  if (!match) {
+    return [
+      new TextRun({
+        text: html,
+        font,
+        size,
+        bold: parentStyles.bold || undefined,
+        italics: parentStyles.italics || undefined,
+        underline: parentStyles.underline ? { type: UnderlineType.SINGLE } : undefined,
+      }),
+    ];
+  }
+
+  const tag = match[1].toLowerCase();
+  const outerText = match[0];
+  const innerText = match[2];
+  const index = match.index ?? 0;
+
+  const before = html.substring(0, index);
+  const after = html.substring(index + outerText.length);
+
+  const runs: TextRun[] = [];
+
+  if (before) {
+    runs.push(...parseHtmlToRuns(before, parentStyles, font, size));
+  }
+
+  const currentStyles: StyleState = {
+    ...parentStyles,
+    bold: tag === "b" ? true : parentStyles.bold,
+    italics: tag === "i" ? true : parentStyles.italics,
+    underline: tag === "u" ? true : parentStyles.underline,
+  };
+
+  runs.push(...parseHtmlToRuns(innerText, currentStyles, font, size));
+
+  if (after) {
+    runs.push(...parseHtmlToRuns(after, parentStyles, font, size));
+  }
+
+  return runs;
+}
+
+function parseTextToRuns(text: string, isNepali: boolean, size: number = 22): TextRun[] {
+  let normalized = text
+    .replace(/\*\*([\s\S]*?)\*\*/g, "<b>$1</b>")
+    .replace(/\*([\s\S]*?)\*/g, "<i>$1</i>")
+    .replace(/__([\s\S]*?)__/g, "<u>$1</u>");
+
+  const font = isNepali ? "Kalimati" : "Times New Roman";
+  return parseHtmlToRuns(normalized, {}, font, size);
+}
 
 /**
  * Generates an MS Word Document (.docx) Blob from the LetterState
@@ -25,77 +90,77 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
   const docChildren: any[] = [];
 
   // 1. EMBLEM / LOGO & HEADER INFORMATION
-  // Left column or Center. Let's do Center aligned for Nepalese official look.
-  if (emblemArrayBuffer) {
-    try {
-      docChildren.push(
+  // Side-by-side header table layout: Left (Emblem), Center (Titles), Right (Address)
+  const leftHeaderParagraphs: Paragraph[] = [];
+  if (state.emblemType !== "none") {
+    if (emblemArrayBuffer) {
+      try {
+        leftHeaderParagraphs.push(
+          new Paragraph({
+            alignment: AlignmentType.LEFT,
+            children: [
+              new ImageRun({
+                data: emblemArrayBuffer,
+                transformation: {
+                  width: 55,
+                  height: 55,
+                },
+              } as any),
+            ],
+          })
+        );
+      } catch (e) {
+        console.error("Failed to insert emblem image into docx", e);
+      }
+    } else {
+      leftHeaderParagraphs.push(
         new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 120 },
+          alignment: AlignmentType.LEFT,
           children: [
-            new ImageRun({
-              data: emblemArrayBuffer,
-              transformation: {
-                width: 70,
-                height: 70,
-              },
-            } as any),
+            new TextRun({
+              text: isNepali ? "नेपाल सरकार" : "Govt. of Nepal",
+              bold: true,
+              color: "DC2626", // Red
+              size: 16,
+              font: isNepali ? "Kalimati" : "Times New Roman",
+            }),
           ],
         })
       );
-    } catch (e) {
-      console.error("Failed to insert emblem image into docx", e);
     }
   } else {
-    // Elegant text-based emblem placeholder if offline or failed
-    docChildren.push(
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 120 },
-        children: [
-          new TextRun({
-            text: "नेपाल सरकार",
-            bold: true,
-            color: "DC2626", // Red color for government theme
-            size: 20,
-            font: "Kalimati",
-          }),
-        ],
-      })
-    );
+    leftHeaderParagraphs.push(new Paragraph({}));
   }
 
-  // Province/Federal Level Header
+  const centerHeaderParagraphs: Paragraph[] = [];
   if (state.officeProvince) {
-    docChildren.push(
+    centerHeaderParagraphs.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
-        spacing: { after: 60, before: 0 },
+        spacing: { after: 30, before: 0 },
         children: [
           new TextRun({
             text: state.officeProvince,
             bold: true,
-            size: 26, // 13 pt
-            color: "DC2626", // Red
+            size: 24, // 12 pt
+            color: "DC2626",
             font: isNepali ? "Kalimati" : "Times New Roman",
           }),
         ],
       })
     );
   }
-
-  // Office Name Header (largest, bold red)
   if (state.officeName) {
-    docChildren.push(
+    centerHeaderParagraphs.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
-        spacing: { after: 60 },
+        spacing: { after: 30 },
         children: [
           new TextRun({
             text: state.officeName,
             bold: true,
-            size: 36, // 18 pt
-            color: "DC2626", // Red
+            size: 32, // 16 pt
+            color: "DC2626",
             font: isNepali ? "Kalimati" : "Times New Roman",
           }),
         ],
@@ -103,18 +168,83 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
     );
   }
 
-  // Department / Section
+  const rightHeaderParagraphs: Paragraph[] = [new Paragraph({})];
+
+  docChildren.push(
+    new Table({
+      width: {
+        size: 100,
+        type: WidthType.PERCENTAGE,
+      },
+      borders: {
+        top: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        left: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        right: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        insideVertical: { style: BorderStyle.NONE, size: 0, color: "auto" },
+      },
+      rows: [
+        new TableRow({
+          children: [
+            new TableCell({
+              width: {
+                size: 15,
+                type: WidthType.PERCENTAGE,
+              },
+              children: leftHeaderParagraphs,
+            }),
+            new TableCell({
+              width: {
+                size: 70,
+                type: WidthType.PERCENTAGE,
+              },
+              children: centerHeaderParagraphs,
+            }),
+            new TableCell({
+              width: {
+                size: 15,
+                type: WidthType.PERCENTAGE,
+              },
+              children: rightHeaderParagraphs,
+            }),
+          ],
+        }),
+      ],
+    })
+  );
+
+  // Third Line Right: Office Address (e.g. हेटौंडा, नेपाल)
+  if (state.officeAddress) {
+    docChildren.push(
+      new Paragraph({
+        alignment: AlignmentType.RIGHT,
+        spacing: { before: 40, after: 40 },
+        children: [
+          new TextRun({
+            text: state.officeAddress,
+            bold: true,
+            size: 22, // 11 pt
+            color: "DC2626",
+            font: isNepali ? "Kalimati" : "Times New Roman",
+          }),
+        ],
+      })
+    );
+  }
+
+  // Followed by respective branch and section name (officeDepartment) centered below
   if (state.officeDepartment) {
     docChildren.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
-        spacing: { after: 60 },
+        spacing: { before: 40, after: 80 },
         children: [
           new TextRun({
             text: state.officeDepartment,
             bold: true,
             size: 24, // 12 pt
-            color: "1E3A8A", // Dark Blue
+            color: "DC2626",
             font: isNepali ? "Kalimati" : "Times New Roman",
           }),
         ],
@@ -122,26 +252,69 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
     );
   }
 
-  // Office Address
-  if (state.officeAddress) {
-    docChildren.push(
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 180 },
-        children: [
-          new TextRun({
-            text: state.officeAddress,
-            size: 20, // 10 pt
-            color: "111827", // Charcoal
-            font: isNepali ? "Kalimati" : "Times New Roman",
-          }),
-        ],
-      })
-    );
-  }
+  // Spacing line below header
+  docChildren.push(new Paragraph({ spacing: { after: 120 } }));
 
   // 2. LETTER METADATA (Letter No., Dispatch/Ref No., Date)
-  // We use a clean 1-row table with borders disabled to layout Left (Letter/Ref No) and Right (Date) perfectly
+  // We use a clean 1-row table with borders disabled to layout Left (Letter No, Dispatch No) and Right (Date) perfectly
+  const leftMetadataParagraphs = [
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: isNepali ? "पत्र संख्या:- " : "Letter No:- ",
+          bold: true,
+          size: 22,
+          color: "DC2626", // Red metadata labels
+          font: isNepali ? "Kalimati" : "Times New Roman",
+        }),
+        new TextRun({
+          text: state.letterNo,
+          size: 22,
+          color: "111827",
+          font: isNepali ? "Kalimati" : "Times New Roman",
+        }),
+      ],
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: isNepali ? "चलानी नम्बर:- " : "Dispatch No:- ",
+          bold: true,
+          size: 22,
+          color: "DC2626", // Red metadata labels
+          font: isNepali ? "Kalimati" : "Times New Roman",
+        }),
+        new TextRun({
+          text: state.dispatchNo,
+          size: 22,
+          color: "111827",
+          font: isNepali ? "Kalimati" : "Times New Roman",
+        }),
+      ],
+    }),
+  ];
+
+  const rightMetadataParagraphs: Paragraph[] = [
+    new Paragraph({
+      alignment: AlignmentType.RIGHT,
+      children: [
+        new TextRun({
+          text: isNepali ? "मिति: " : "Date: ",
+          bold: true,
+          size: 22,
+          color: "DC2626",
+          font: isNepali ? "Kalimati" : "Times New Roman",
+        }),
+        new TextRun({
+          text: isNepali ? state.dateBS : state.dateAD,
+          size: 22,
+          color: "111827",
+          font: isNepali ? "Kalimati" : "Times New Roman",
+        }),
+      ],
+    })
+  ];
+
   docChildren.push(
     new Table({
       width: {
@@ -164,62 +337,14 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
                 size: 50,
                 type: WidthType.PERCENTAGE,
               },
-              children: [
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: isNepali ? "पत्र संख्या: " : "Letter No: ",
-                      bold: true,
-                      size: 22,
-                      font: isNepali ? "Kalimati" : "Times New Roman",
-                    }),
-                    new TextRun({
-                      text: state.letterNo,
-                      size: 22,
-                      font: isNepali ? "Kalimati" : "Times New Roman",
-                    }),
-                  ],
-                }),
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: isNepali ? "चलानी नं: " : "Ref No: ",
-                      bold: true,
-                      size: 22,
-                      font: isNepali ? "Kalimati" : "Times New Roman",
-                    }),
-                    new TextRun({
-                      text: state.dispatchNo,
-                      size: 22,
-                      font: isNepali ? "Kalimati" : "Times New Roman",
-                    }),
-                  ],
-                }),
-              ],
+              children: leftMetadataParagraphs,
             }),
             new TableCell({
               width: {
                 size: 50,
                 type: WidthType.PERCENTAGE,
               },
-              children: [
-                new Paragraph({
-                  alignment: AlignmentType.RIGHT,
-                  children: [
-                    new TextRun({
-                      text: isNepali ? "मिति: " : "Date: ",
-                      bold: true,
-                      size: 22,
-                      font: isNepali ? "Kalimati" : "Times New Roman",
-                    }),
-                    new TextRun({
-                      text: isNepali ? state.dateBS : state.dateAD,
-                      size: 22,
-                      font: isNepali ? "Kalimati" : "Times New Roman",
-                    }),
-                  ],
-                }),
-              ],
+              children: rightMetadataParagraphs,
             }),
           ],
         }),
@@ -313,13 +438,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
           alignment: AlignmentType.LEFT,
           spacing: { after: 120, line: 360 }, // Spacing after paragraph and 1.5 line height
           indent: { firstLine: 400 }, // Standard paragraph indent
-          children: [
-            new TextRun({
-              text: pText,
-              size: 22, // 11 pt
-              font: isNepali ? "Kalimati" : "Times New Roman",
-            }),
-          ],
+          children: parseTextToRuns(pText, isNepali, 22),
         })
       );
     });
@@ -464,11 +583,73 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
     docChildren.push(new Paragraph({ spacing: { after: 120 } }));
   }
 
-  // 8. SIGN-OFF BLOCK (Right aligned)
-  docChildren.push(
+  // 8. SIGN-OFF & QR CODE BLOCK (Side-by-side borderless Table)
+  let qrCodeArrayBuffer: ArrayBuffer | null = null;
+  if (state.showQrCode && state.qrCodeValue) {
+    try {
+      const qrDataUrl = await QRCode.toDataURL(state.qrCodeValue, {
+        width: 150,
+        margin: 1,
+        color: {
+          dark: "#0f172a",
+          light: "#ffffff"
+        }
+      });
+      const parts = qrDataUrl.split(';base64,');
+      const raw = window.atob(parts[1] || parts[0]);
+      const rawLength = raw.length;
+      const array = new Uint8Array(new ArrayBuffer(rawLength));
+      for (let i = 0; i < rawLength; i++) {
+        array[i] = raw.charCodeAt(i);
+      }
+      qrCodeArrayBuffer = array.buffer;
+    } catch (e) {
+      console.error("Failed to generate QR code for docx", e);
+    }
+  }
+
+  // Left Cell Children (QR Code & Label)
+  const leftCellParagraphs: Paragraph[] = [];
+  if (qrCodeArrayBuffer) {
+    leftCellParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { before: 240, after: 60 },
+        children: [
+          new ImageRun({
+            data: qrCodeArrayBuffer,
+            transformation: {
+              width: 60,
+              height: 60,
+            },
+          } as any),
+        ],
+      })
+    );
+    if (state.qrCodeLabel) {
+      leftCellParagraphs.push(
+        new Paragraph({
+          alignment: AlignmentType.LEFT,
+          children: [
+            new TextRun({
+              text: state.qrCodeLabel,
+              size: 16, // 8 pt
+              color: "4B5563",
+              font: isNepali ? "Kalimati" : "Times New Roman",
+            }),
+          ],
+        })
+      );
+    }
+  } else {
+    leftCellParagraphs.push(new Paragraph({}));
+  }
+
+  // Right Cell Children (Sign-off & Signature Lines)
+  const rightCellParagraphs: Paragraph[] = [
     new Paragraph({
       alignment: AlignmentType.RIGHT,
-      spacing: { before: 360, after: 60 },
+      spacing: { before: 240, after: 60 },
       children: [
         new TextRun({
           text: isNepali ? "भवदीय," : "Sincerely yours,",
@@ -476,14 +657,10 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
           font: isNepali ? "Kalimati" : "Times New Roman",
         }),
       ],
-    })
-  );
-
-  // Blank spacing for signature
-  docChildren.push(
+    }),
     new Paragraph({
       alignment: AlignmentType.RIGHT,
-      spacing: { after: 240 },
+      spacing: { after: 120 },
       children: [
         new TextRun({
           text: "...........................................",
@@ -492,11 +669,10 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
         }),
       ],
     })
-  );
+  ];
 
-  // Sender details
   if (state.senderName) {
-    docChildren.push(
+    rightCellParagraphs.push(
       new Paragraph({
         alignment: AlignmentType.RIGHT,
         spacing: { after: 40 },
@@ -513,7 +689,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
   }
 
   if (state.senderDesignation) {
-    docChildren.push(
+    rightCellParagraphs.push(
       new Paragraph({
         alignment: AlignmentType.RIGHT,
         spacing: { after: 40 },
@@ -529,6 +705,43 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
     );
   }
 
+  docChildren.push(
+    new Table({
+      width: {
+        size: 100,
+        type: WidthType.PERCENTAGE,
+      },
+      borders: {
+        top: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        left: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        right: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        insideVertical: { style: BorderStyle.NONE, size: 0, color: "auto" },
+      },
+      rows: [
+        new TableRow({
+          children: [
+            new TableCell({
+              width: {
+                size: 50,
+                type: WidthType.PERCENTAGE,
+              },
+              children: leftCellParagraphs,
+            }),
+            new TableCell({
+              width: {
+                size: 50,
+                type: WidthType.PERCENTAGE,
+              },
+              children: rightCellParagraphs,
+            }),
+          ],
+        }),
+      ],
+    })
+  );
+
   // Construct the full Word Document
   const doc = new Document({
     sections: [
@@ -542,6 +755,34 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
               right: 1440,
             },
           },
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                border: {
+                  top: {
+                    style: BorderStyle.SINGLE,
+                    size: 12, // 1.5 pt
+                    color: "DC2626", // Solid Red footer border line
+                    space: 8,
+                  },
+                },
+                children: [
+                  new TextRun({
+                    text: isNepali 
+                      ? `${state.footerPhone ? "फोन नं. " + state.footerPhone : ""}${state.footerPhone && state.footerEmail ? ", " : ""}${state.footerEmail ? "ईमेलः " + state.footerEmail : ""}${(state.footerPhone || state.footerEmail) && state.footerWeb ? ", " : ""}${state.footerWeb ? "वेबसाईटः " + state.footerWeb : ""}`
+                      : `${state.footerPhone ? "Phone No. " + state.footerPhone : ""}${state.footerPhone && state.footerEmail ? " | " : ""}${state.footerEmail ? "Email: " + state.footerEmail : ""}${(state.footerPhone || state.footerEmail) && state.footerWeb ? " | " : ""}${state.footerWeb ? "Website: " + state.footerWeb : ""}`,
+                    size: 18, // 9 pt
+                    bold: true,
+                    color: "DC2626", // Red footer text color
+                    font: isNepali ? "Kalimati" : "Times New Roman",
+                  }),
+                ],
+              }),
+            ],
+          }),
         },
         children: docChildren,
       },

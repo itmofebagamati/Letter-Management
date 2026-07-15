@@ -1,6 +1,6 @@
 export type Language = "ne" | "en";
 
-export type EmblemType = "nepal" | "province_bagamati" | "province_generic" | "local" | "none";
+export type EmblemType = "nepal" | "province_bagamati" | "province_generic" | "local" | "custom" | "none";
 
 export interface TapasilItem {
   id: string;
@@ -16,8 +16,15 @@ export interface LetterState {
   officeName: string;
   officeProvince: string;
   officeDepartment: string;
+  officeSection?: string;
   officeAddress: string;
   emblemType: EmblemType;
+  customLogoUrl?: string;
+  
+  // Footer details (customizable by Admin)
+  footerPhone: string;
+  footerEmail: string;
+  footerWeb: string;
   
   // Administrative metadata
   letterNo: string;
@@ -44,6 +51,11 @@ export interface LetterState {
   showTapasil: boolean;
   tapasilTitle: string; // e.g., "तपसिल:" or "Details:"
   tapasilItems: TapasilItem[];
+
+  // Optional Verification QR Code
+  showQrCode: boolean;
+  qrCodeValue: string; // URL/text to encode
+  qrCodeLabel: string; // Verification text label
 }
 
 export interface PresetOffice {
