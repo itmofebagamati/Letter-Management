@@ -132,6 +132,22 @@ Draft a complete, official, and flawless subject and main body for this governme
     }
   } catch (error: any) {
     console.error("Gemini assistance error:", error);
+    const errString = String(error.stack || error.message || error);
+    const isNepali = req.body?.language === "ne";
+    
+    if (
+      errString.includes("prepayment credits") || 
+      errString.includes("RESOURCE_EXHAUSTED") ||
+      errString.includes("429") ||
+      errString.includes("quota")
+    ) {
+      const userFriendlyMessage = isNepali
+        ? "तपाईंको एआई सेवा शुल्क भुक्तानी क्रेडिट (Prepayment Credits) समाप्त भएको छ। यो एआई ड्राफ्ट सुविधा पुन: सुचारु गर्न कृपया गुगल एआई स्टूडियो (Google AI Studio: https://ai.studio/projects) मा गई बिलिङ अद्यावधिक गर्नुहोस वा नयाँ क्रेडिट थप्नुहोस्।"
+        : "Your Gemini API prepayment credits are depleted. To continue using the AI Drafting Assistant, please top up your prepayment credits in Google AI Studio (https://ai.studio/projects) or manage your billing.";
+      res.status(429).json({ error: userFriendlyMessage });
+      return;
+    }
+    
     res.status(500).json({ error: error.message || "An error occurred while generating letter contents." });
   }
 });
