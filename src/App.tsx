@@ -632,7 +632,9 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
         salutation: isNe ? "महोदय," : "Dear Sir/Madam,",
         footerPhone: phone,
         footerEmail: email,
-        footerWeb: web
+        footerWeb: web,
+        dateBS: getPrefilledNepaliDate().bsDate,
+        dateAD: getPrefilledNepaliDate().adDate
       };
     });
   };

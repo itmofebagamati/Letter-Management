@@ -106,28 +106,18 @@ export function toEnglishNumerals(numStr: string | number): string {
     .join("");
 }
 
+import NepaliDate from 'nepali-date-converter';
+
 // Simple Nepali Date approximation based on current system time
 export function getPrefilledNepaliDate(): { bsDate: string; adDate: string } {
-  // Current time is around July 2026, which is B.S. Shrawan 2083
-  // Let's return a realistic current Nepali Date based on standard offsets.
-  // Today's date: 2026-07-14.
-  // Shrawan 1, 2083 is approximately July 17, 2026.
-  // So July 14, 2026 is approximately Ashadh 30, 2083 BS.
   const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth() + 1; // 1-indexed
-  const day = today.getDate();
+  const adDateStr = today.toISOString().split('T')[0];
 
-  // Return formatted Gregorian (AD)
-  const adDateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-  // Basic calculation for Ashadh 30, 2083 BS or Shrawan 2083 BS:
-  // Let's create a robust approximation for July 14, 2026: २०८३/०३/३० (or Ashadh 30, 2083)
-  // Let's format it in standard Nepali numbers: २०८३/०३/३०
-  const bsDateStr = "२०८३/०३/३०";
+  const bsDate = new NepaliDate(today);
+  const bsDateStr = `${bsDate.getYear()}/${bsDate.getMonth() + 1}/${bsDate.getDate()}`;
 
   return {
-    bsDate: bsDateStr,
+    bsDate: toNepaliNumerals(bsDateStr),
     adDate: adDateStr
   };
 }
