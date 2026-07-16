@@ -343,7 +343,7 @@ export function LetterPreviewModal({ isOpen, onClose, entry, language, onLoadInt
   const letterData: Partial<LetterState> = state || {
     language: language,
     officeProvince: entry.sectionNameNe || entry.sectionNameEn || (isNe ? "बागमती प्रदेश सरकार" : "Bagamati Province Govt"),
-    officeName: isNe ? "आर्थिक मामिला तथा योजना मन्त्रालय" : "Ministry of Economic Affairs & Planning",
+    officeName: isNe ? "वन तथा वातावरण मन्त्रालय" : "Ministry of Forests and Environment",
     officeAddress: isNe ? "हेटौंडा, मकवानपुर" : "Hetauda, Makwanpur",
     letterNo: entry.letterNo || "---",
     dispatchNo: entry.chalaniNo || "---",

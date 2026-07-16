@@ -250,9 +250,9 @@ export default function App() {
   // Primary states
   const [state, setState] = useState<LetterState>({
     language: "ne",
-    presetId: "mofe_bagamati", // Default to the user's Ministry of Economic Affairs & Planning, Bagamati Province
+    presetId: "mofe_bagamati", // Default to the user's Ministry of Forests and Environment, Bagamati Province
     officeProvince: "बागमती प्रदेश सरकार",
-    officeName: "आर्थिक मामिला तथा योजना मन्त्रालय",
+    officeName: "वन तथा वातावरण मन्त्रालय",
     officeDepartment: "",
     officeSection: "office",
     officeAddress: "हेटौंडा, मकवानपुर",
@@ -271,7 +271,7 @@ export default function App() {
     recipientAddress: "हेटौंडा, बागमती प्रदेश",
     subject: "बजेट अख्तियारी तथा निकासा सम्बन्धमा।",
     salutation: "महोदय,",
-    body: "प्रस्तुत विषयमा बागमती प्रदेश सरकारको स्वीकृत वार्षिक कार्यक्रम अनुसार यस आर्थिक मामिला तथा योजना मन्त्रालय अन्तर्गत सञ्चालन हुने डिजिटल शासकीय सुदृढीकरण तथा पूर्वाधार विकास कार्यक्रमका लागि विनियोजित बजेट तथा कार्यक्रम कार्यतालिका स्वीकृत भइसकेको ब्यहोरा अवगत नै छ।\n\nसो कार्यका लागि आवश्यक पहिलो चौमासिकको बजेट अख्तियारी दिई नियमानुसार आर्थिक निकासा उपलब्ध गराउनुहुन सादर अनुरोध गरिन्छ।",
+    body: "प्रस्तुत विषयमा बागमती प्रदेश सरकारको स्वीकृत वार्षिक कार्यक्रम अनुसार यस वन तथा वातावरण मन्त्रालय अन्तर्गत सञ्चालन हुने डिजिटल शासकीय सुदृढीकरण तथा पूर्वाधार विकास कार्यक्रमका लागि विनियोजित बजेट तथा कार्यक्रम कार्यतालिका स्वीकृत भइसकेको ब्यहोरा अवगत नै छ।\n\nसो कार्यका लागि आवश्यक पहिलो चौमासिकको बजेट अख्तियारी दिई नियमानुसार आर्थिक निकासा उपलब्ध गराउनुहुन सादर अनुरोध गरिन्छ।",
     senderName: "हरिप्रसाद अधिकारी",
     senderDesignation: "शाखा अधिकृत",
     showTapasil: true,
@@ -2074,7 +2074,7 @@ ${state.senderDesignation}
                 type="text"
                 value={state.officeName}
                 onChange={(e) => setState({ ...state, officeName: e.target.value })}
-                placeholder="आर्थिक मामिला तथा योजना मन्त्रालय"
+                placeholder="वन तथा वातावरण मन्त्रालय"
                 className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm font-semibold text-red-700 focus:ring-2 focus:ring-red-500 focus:outline-none bg-white transition-all"
               />
             </div>

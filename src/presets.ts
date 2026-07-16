@@ -3,7 +3,7 @@ import { PresetOffice } from "./types";
 export const OFFICE_PRESETS: PresetOffice[] = [
   {
     id: "mofe_bagamati",
-    name: "आर्थिक मामिला तथा योजना मन्त्रालय",
+    name: "वन तथा वातावरण मन्त्रालय",
     nameEn: "Ministry of Economic Affairs and Planning",
     province: "बागमती प्रदेश सरकार",
     provinceEn: "Bagamati Province Government",

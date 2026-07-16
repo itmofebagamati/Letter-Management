@@ -235,6 +235,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
         size: 100,
         type: WidthType.PERCENTAGE,
       },
+      columnWidths: [1494, 6974, 1494],
       borders: {
         top: { style: BorderStyle.NONE, size: 0, color: "auto" },
         bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
@@ -285,7 +286,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
         new TextRun({
           text: `(${state.officeDepartment})`,
           bold: true,
-          size: 22, // 11 pt
+          size: 24, // 12 pt
           color: "DC2626",
           font: isNepali ? "Kalimati" : "Times New Roman",
         })
@@ -300,7 +301,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
         new TextRun({
           text: state.officeAddress,
           bold: true,
-          size: 22, // 11 pt
+          size: 24, // 12 pt
           color: "DC2626",
           font: isNepali ? "Kalimati" : "Times New Roman",
         })
@@ -393,6 +394,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
         size: 100,
         type: WidthType.PERCENTAGE,
       },
+      columnWidths: [4981, 4981],
       borders: {
         top: { style: BorderStyle.NONE, size: 0, color: "auto" },
         bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
@@ -656,6 +658,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
     docChildren.push(
       new Table({
         width: { size: 90, type: WidthType.PERCENTAGE },
+        columnWidths: [1345, 4034, 3586],
         alignment: AlignmentType.CENTER,
         rows: tableRows,
       })
@@ -782,6 +785,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
         size: 100,
         type: WidthType.PERCENTAGE,
       },
+      columnWidths: [4981, 4981],
       borders: {
         top: { style: BorderStyle.NONE, size: 0, color: "auto" },
         bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
