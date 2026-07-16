@@ -11,7 +11,9 @@ import {
   limit, 
   serverTimestamp,
   type DocumentData,
-  QueryDocumentSnapshot
+  QueryDocumentSnapshot,
+  deleteDoc,
+  writeBatch
 } from "firebase/firestore";
 
 // Configuration loaded from firebase-applet-config.json
@@ -39,6 +41,17 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || "(defa
  */
 export async function getNextChalaniNumber(sectionId: string, startNumber: number = 1): Promise<number> {
   const counterRef = doc(db, "counters", sectionId);
+  
+  // Check if there are any entries in the register
+  const logCollection = collection(db, "chalani_register");
+  const q = query(logCollection, limit(1));
+  const snap = await getDocs(q);
+  
+  // If no entries at all, force reset the counter to 0!
+  if (snap.empty) {
+      await setSectionCounter(sectionId, 0);
+      return 1;
+  }
 
   return await runTransaction(db, async (transaction) => {
     const counterSnap = await transaction.get(counterRef);
@@ -101,4 +114,24 @@ export async function setSectionCounter(sectionId: string, startValue: number) {
   return await runTransaction(db, async (transaction) => {
     transaction.set(counterRef, { currentValue: startValue }, { merge: true });
   });
+}
+
+/**
+ * Deletes a single chalani log entry from Firestore
+ */
+export async function deleteChalaniEntry(id: string): Promise<void> {
+  const docRef = doc(db, "chalani_register", id);
+  await deleteDoc(docRef);
+}
+
+/**
+ * Bulk deletes multiple chalani log entries using Firestore batch writes
+ */
+export async function bulkDeleteChalaniEntries(ids: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  ids.forEach((id) => {
+    const docRef = doc(db, "chalani_register", id);
+    batch.delete(docRef);
+  });
+  await batch.commit();
 }

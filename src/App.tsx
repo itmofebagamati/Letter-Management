@@ -32,7 +32,11 @@ import {
   AlignRight,
   AlignJustify,
   Minus,
-  Eraser
+  Eraser,
+  Eye,
+  Lock,
+  Unlock,
+  ShieldCheck
 } from "lucide-react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -45,8 +49,12 @@ import {
   getNextChalaniNumber, 
   logChalaniEntry, 
   fetchChalaniRegister, 
-  setSectionCounter 
+  setSectionCounter,
+  deleteChalaniEntry,
+  bulkDeleteChalaniEntries
 } from "./firebase";
+import { LetterPreviewModal } from "./components/LetterPreviewModal";
+import { StaffLogin } from "./components/StaffLogin";
 
 // HTML & Markdown formatting parser helpers for document preview
 function parseHtmlTags(html: string, counter = { current: 0 }): ReactNode[] {
@@ -396,6 +404,47 @@ export default function App() {
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
 
+  // Admin & Deletion States
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [isStaffAuthenticated, setIsStaffAuthenticated] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
+  const [previewingEntry, setPreviewingEntry] = useState<any | null>(null);
+
+  // Custom dialog/alert states (iframe-safe replacements)
+  const [customConfirm, setCustomConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const [customAlert, setCustomAlert] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const showConfirm = (message: string, onConfirm: () => Promise<void>, title?: string) => {
+    setCustomConfirm({
+      isOpen: true,
+      title: title || (state.language === "ne" ? "निश्चित गर्नुहोस्" : "Confirm Action"),
+      message,
+      onConfirm: async () => {
+        await onConfirm();
+        setCustomConfirm(null);
+      }
+    });
+  };
+
+  const showAlert = (message: string, title?: string) => {
+    setCustomAlert({
+      isOpen: true,
+      title: title || (state.language === "ne" ? "जानकारी" : "Information"),
+      message
+    });
+  };
+
   // Bulk Generation States
   const [bulkRecipientsRaw, setBulkRecipientsRaw] = useState<string>(
     `श्री प्रमुख प्रशासकीय अधिकृत, बनेपा नगरपालिका, काभ्रे
@@ -687,7 +736,7 @@ export default function App() {
       URL.revokeObjectURL(docUrl);
     } catch (err) {
       console.error("Failed to generate and download MS Word document", err);
-      alert(state.language === "ne" ? "वर्ड फाइल डाउनलोड गर्न असफल भयो।" : "Failed to download Word file.");
+      showAlert(state.language === "ne" ? "वर्ड फाइल डाउनलोड गर्न असफल भयो।" : "Failed to download Word file.");
     } finally {
       setIsDownloading(false);
     }
@@ -736,7 +785,7 @@ export default function App() {
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert(state.language === "ne" ? "कृपया प्रिन्ट विन्डो खोल्नको लागि पपअपहरू अनुमति दिनुहोस्।" : "Please allow popups to open the print dialog.");
+      showAlert(state.language === "ne" ? "कृपया प्रिन्ट विन्डो खोल्नको लागि पपअपहरू अनुमति दिनुहोस्।" : "Please allow popups to open the print dialog.");
       return;
     }
 
@@ -844,7 +893,7 @@ export default function App() {
       sheet.style.minHeight = "1123px"; // 29.7cm at 96 DPI
       sheet.style.maxWidth = "none";
       sheet.style.transform = "none";
-      sheet.style.padding = "32px 56px 40px 56px"; // 32px top, 56px left/right, 40px bottom (Exact margin specifications)
+      sheet.style.padding = "34px 34px 34px 96px"; // 0.35" top, 0.35" right, 0.35" bottom, 1.0" left
       sheet.style.boxShadow = "none";
       sheet.style.border = "none";
 
@@ -961,7 +1010,7 @@ export default function App() {
       pdf.save(`Government_Letter_${cleanSubject || "Nepal"}.pdf`);
     } catch (err) {
       console.error("Failed to generate and download PDF document", err);
-      alert(state.language === "ne" ? "पीडीएफ फाइल डाउनलोड गर्न असफल भयो।" : "Failed to download PDF file.");
+      showAlert(state.language === "ne" ? "पीडीएफ फाइल डाउनलोड गर्न असफल भयो।" : "Failed to download PDF file.");
     } finally {
       setIsDownloadingPdf(false);
     }
@@ -986,6 +1035,89 @@ export default function App() {
   useEffect(() => {
     loadRegister();
   }, []);
+
+  // Admin Mode Handlers
+  const handleAdminUnlock = () => {
+    const trimmed = adminPasswordInput.trim();
+    if (trimmed === "admin" || trimmed === "1234") {
+      setIsAdminMode(true);
+      setAdminPasswordInput("");
+      showAlert(state.language === "ne" ? "प्रशासक मोड सफलतापूर्वक अनलक भयो!" : "Admin Mode unlocked successfully!");
+    } else {
+      showAlert(state.language === "ne" ? "गलत पासवर्ड! कृपया 'admin' वा '1234' प्रयोग गर्नुहोस्।" : "Incorrect password! Please use 'admin' or '1234'.");
+    }
+  };
+
+  const handleAdminLock = () => {
+    setIsAdminMode(false);
+    setSelectedEntries([]);
+    showAlert(state.language === "ne" ? "प्रशासक मोड बन्द भयो।" : "Admin Mode locked.");
+  };
+
+  const handleSingleDelete = async (id: string, chalaniNo: string) => {
+    const isNe = state.language === "ne";
+    const confirmMsg = isNe
+      ? `के तपाईं चलानी नं. ${chalaniNo} को पत्र स्थायी रूपमा मेटाउन चाहनुहुन्छ? यो कार्य फिर्ता गर्न सकिने छैन।`
+      : `Are you sure you want to permanently delete dispatch Ref No: ${chalaniNo}? This action cannot be undone.`;
+    
+    showConfirm(confirmMsg, async () => {
+      try {
+        await deleteChalaniEntry(id);
+        showAlert(isNe ? "चलानी रेकर्ड सफलतापूर्वक मेटाइयो।" : "Dispatch record deleted successfully.");
+        setSelectedEntries((prev) => prev.filter((item) => item !== id));
+        loadRegister();
+      } catch (err) {
+        console.error("Failed to delete chalani entry:", err);
+        showAlert(isNe ? "मेट्न असफल भयो।" : "Failed to delete the record.");
+      }
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const isNe = state.language === "ne";
+    if (selectedEntries.length === 0) return;
+
+    const confirmMsg = isNe
+      ? `के तपाईं चयन गरिएका ${selectedEntries.length} वटा चलानी रेकर्डहरू स्थायी रूपमा मेटाउन निश्चित हुनुहुन्छ? यो कार्य फिर्ता गर्न सकिने छैन।`
+      : `Are you sure you want to permanently delete the ${selectedEntries.length} selected dispatch records? This action cannot be undone.`;
+
+    showConfirm(confirmMsg, async () => {
+      try {
+        setIsRegisterLoading(true);
+        await bulkDeleteChalaniEntries(selectedEntries);
+        showAlert(isNe ? "चयन गरिएका सबै रेकर्डहरू सफलतापूर्वक मेटाइयो।" : "Selected dispatch records deleted successfully.");
+        setSelectedEntries([]);
+        loadRegister();
+      } catch (err) {
+        console.error("Bulk delete error:", err);
+        showAlert(isNe ? "सामूहिक रूपमा मेटाउन असफल भयो।" : "Failed to bulk delete selected records.");
+        setIsRegisterLoading(false);
+      }
+    });
+  };
+
+  const handleToggleSelectEntry = (id: string) => {
+    setSelectedEntries((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((item) => item !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
+  };
+
+  const handleSelectAllEntries = (filteredList: any[]) => {
+    const filteredIds = filteredList.map((item) => item.id);
+    setSelectedEntries((prev) => {
+      const allSelected = filteredIds.every((id) => prev.includes(id));
+      if (allSelected) {
+        return prev.filter((id) => !filteredIds.includes(id));
+      } else {
+        const newSelections = filteredIds.filter((id) => !prev.includes(id));
+        return [...prev, ...newSelections];
+      }
+    });
+  };
 
   // Atomic Cloud Issue & Official Register Dispatch Flow
   const handleRegisterAndDownload = async (format: "docx" | "pdf") => {
@@ -1233,7 +1365,7 @@ export default function App() {
 
     } catch (err) {
       console.error("Cloud registration failed:", err);
-      alert(state.language === "ne" ? "चलानी दर्ता गर्न सकिएन।" : "Failed to register Chalani in cloud.");
+      showAlert(state.language === "ne" ? "चलानी दर्ता गर्न सकिएन।" : "Failed to register Chalani in cloud.");
     } finally {
       if (originalTab !== "editor") {
         setActiveTab(originalTab);
@@ -1255,7 +1387,7 @@ export default function App() {
       );
     } catch (err) {
       console.error("Could not parse letter state JSON:", err);
-      alert(state.language === "ne" ? "विवरण खोल्न सकिएन।" : "Failed to parse saved letter state.");
+      showAlert(state.language === "ne" ? "विवरण खोल्न सकिएन।" : "Failed to parse saved letter state.");
     }
   };
 
@@ -1263,14 +1395,14 @@ export default function App() {
   const handleCounterOverride = async (sectionId: string, valueStr: string) => {
     const parsed = parseInt(valueStr, 10);
     if (isNaN(parsed) || parsed < 0) {
-      alert(state.language === "ne" ? "कृपया सही सकारात्मक नम्बर हाल्नुहोस्।" : "Please enter a valid positive number.");
+      showAlert(state.language === "ne" ? "कृपया सही सकारात्मक नम्बर हाल्नुहोस्।" : "Please enter a valid positive number.");
       return;
     }
     const label = state.language === "ne" ? "के तपाईं चलानी क्रम परिवर्तन गर्न चाहनुहुन्छ?" : "Are you sure you want to change the sequence number?";
     if (confirm(label)) {
       try {
         await setSectionCounter(sectionId, parsed);
-        alert(state.language === "ne" ? "सफलतापूर्वक अद्यावधिक गरियो!" : "Counter updated successfully!");
+        showAlert(state.language === "ne" ? "सफलतापूर्वक अद्यावधिक गरियो!" : "Counter updated successfully!");
         loadRegister();
       } catch (err) {
         console.error("Counter override error:", err);
@@ -1319,7 +1451,7 @@ ${state.senderDesignation}
   const handleBulkGenerate = async () => {
     const lines = bulkRecipientsRaw.split("\n").map(l => l.trim()).filter(Boolean);
     if (lines.length === 0) {
-      alert(state.language === "ne" ? "कृपया कम्तिमा एक प्रापक विवरण प्रविष्ट गर्नुहोस्।" : "Please enter at least one recipient detail.");
+      showAlert(state.language === "ne" ? "कृपया कम्तिमा एक प्रापक विवरण प्रविष्ट गर्नुहोस्।" : "Please enter at least one recipient detail.");
       return;
     }
 
@@ -1586,7 +1718,7 @@ ${state.senderDesignation}
 
     } catch (err) {
       console.error("Bulk letters generation failed", err);
-      alert(state.language === "ne" ? "थोक पत्र सिर्जना असफल भयो।" : "Failed to generate bulk letters.");
+      showAlert(state.language === "ne" ? "थोक पत्र सिर्जना असफल भयो।" : "Failed to generate bulk letters.");
       setIsBulkGenerating(false);
     }
   };
@@ -1674,6 +1806,7 @@ ${state.senderDesignation}
     }, 20);
   };
 
+  if (!isStaffAuthenticated) return <StaffLogin onAuth={() => setIsStaffAuthenticated(true)} language={state.language} />;
   return (
     <div id="app-root" className="h-screen flex flex-col bg-[#f8fafc] text-slate-900 font-sans overflow-hidden">
       {/* Top Navigation Bar */}
@@ -2923,7 +3056,7 @@ ${state.senderDesignation}
           {/* Paper Sheet (Exact A4 Aspect Ratio) */}
           <div
             id="a4-sheet"
-            className="w-full max-w-[21cm] min-h-[29.7cm] bg-white text-slate-900 shadow-2xl border border-slate-200 pt-6 md:pt-8 pb-10 px-10 md:px-14 flex flex-col justify-between relative select-text mb-8"
+            className="w-full max-w-[21cm] min-h-[29.7cm] bg-white text-slate-900 shadow-2xl border border-slate-200 pt-[34px] pb-[34px] pl-[96px] pr-[34px] flex flex-col justify-between relative select-text mb-8"
             style={{ fontFamily: state.language === "ne" ? "Noto Sans Devanagari, sans-serif" : "Georgia, serif" }}
           >
             {/* Sheet Watermark */}
@@ -2998,27 +3131,29 @@ ${state.senderDesignation}
 
                   {/* Second Line Center: Office/Ministry Name */}
                   {state.officeName && (
-                    <h1 className="text-red-600 text-lg md:text-2xl font-extrabold tracking-tight mt-1 font-nepali">
+                    <h1 className="text-red-600 text-lg md:text-2xl font-extrabold tracking-tight mt-1 font-nepali text-center w-full">
                       {state.officeName}
                     </h1>
                   )}
                 </div>
 
-                {/* Third Line Right: Office Address */}
-                {state.officeAddress && (
-                  <div className="text-right w-full text-red-600 font-bold text-xs md:text-sm font-nepali leading-none -mt-1 md:-mt-2">
-                    {state.officeAddress}
+                <div className="grid grid-cols-3 items-center w-full mt-1 px-2">
+                  <div />
+                  <div className="text-center">
+                    {state.officeDepartment && (
+                      <h2 className="text-red-600 text-xs md:text-sm font-semibold tracking-wide font-nepali">
+                        ({state.officeDepartment})
+                      </h2>
+                    )}
                   </div>
-                )}
-
-                {/* Followed by respective branch and section name */}
-                {state.officeDepartment && (
-                  <div className="text-center w-full mt-1">
-                    <h2 className="text-red-600 text-xs md:text-sm font-semibold tracking-wide font-nepali">
-                      {state.officeDepartment}
-                    </h2>
+                  <div className="text-right">
+                    {state.officeAddress && (
+                      <div className="text-red-600 font-bold text-xs md:text-sm font-nepali leading-none">
+                        {state.officeAddress}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
 
               {/* 2. Metadata Columns (Letter No, Dispatch No, Date) - styled like screenshot */}
@@ -3144,13 +3279,11 @@ ${state.senderDesignation}
               )}
 
               {/* Sign-off Block (Bottom Right) */}
-              <div className="flex flex-col items-end text-xs md:text-sm text-slate-800 w-64 text-right">
-                <div className="mb-10 font-serif">
-                  {state.language === "ne" ? "भवदीय," : "Sincerely yours,"}
-                </div>
-                
+              <div className="flex flex-col items-center text-center text-xs md:text-sm text-slate-800 w-64">
                 {/* Signature space */}
-                <div className="w-40 border-b border-slate-300 mb-2 self-end"></div>
+                <div className="text-slate-400 font-medium mb-2 select-none">
+                  ...........................................
+                </div>
 
                 {state.senderName && (
                   <p className="font-bold text-slate-900">{state.senderName}</p>
@@ -3196,7 +3329,7 @@ ${state.senderDesignation}
                 <BookOpen className="w-6 h-6" />
               </div>
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-sans">
                   {state.language === "ne" ? "कुल चलानी संख्या" : "Total Dispatches"}
                 </span>
                 <span className="text-2xl font-bold text-slate-900 leading-none font-sans">
@@ -3206,17 +3339,17 @@ ${state.senderDesignation}
             </div>
 
             {/* Global Sequence Management Card */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 col-span-1 md:col-span-3">
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 col-span-1 md:col-span-2">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
                   <Database className="w-6 h-6 animate-pulse" />
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-sans">
                     {state.language === "ne" ? "चलानी नम्बर क्रम व्यवस्थापन" : "Sequence Number Management"}
                   </span>
-                  <span className="text-xs md:text-sm font-semibold text-slate-700 block mt-0.5">
-                    {state.language === "ne" ? "केन्द्रीय कार्यालयको अर्को चलानी नम्बर अद्यावधिक गर्नुहोस्" : "Update central office next dispatch serial number"}
+                  <span className="text-xs font-semibold text-slate-700 block mt-0.5">
+                    {state.language === "ne" ? "अर्को चलानी नम्बर अद्यावधिक गर्नुहोस्" : "Update central next dispatch serial number"}
                   </span>
                 </div>
               </div>
@@ -3224,7 +3357,7 @@ ${state.senderDesignation}
               {/* Inline Next Sequence Override */}
               <div className="flex items-center gap-2 self-end md:self-auto border-t md:border-t-0 pt-3 md:pt-0 w-full md:w-auto justify-between md:justify-start">
                 <span className="text-[10px] md:text-xs text-slate-500 font-sans">
-                  {state.language === "ne" ? "अर्को चलानी क्रमः" : "Next sequence:"}
+                  {state.language === "ne" ? "अर्को क्रमः" : "Next sequence:"}
                 </span>
                 <input
                   type="number"
@@ -3240,9 +3373,58 @@ ${state.senderDesignation}
                       handleCounterOverride("office", (e.target as HTMLInputElement).value);
                     }
                   }}
-                  className="w-24 px-2.5 py-1.5 border border-slate-200 rounded-md text-sm text-center font-bold text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 font-sans"
+                  className="w-20 px-2.5 py-1.5 border border-slate-200 rounded-md text-sm text-center font-bold text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 font-sans"
                   title={state.language === "ne" ? "चलानी क्रम परिवर्तन गर्न यहाँ नयाँ नम्बर टाइप गरि बाहिर क्लिक गर्नुहोस" : "Change sequence value"}
                 />
+              </div>
+            </div>
+
+            {/* Admin Access Panel Card (col-span-1) */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 w-full">
+                <div className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${isAdminMode ? "bg-emerald-50 text-emerald-600 animate-pulse" : "bg-slate-100 text-slate-500"}`}>
+                  {isAdminMode ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-sans">
+                    {state.language === "ne" ? "प्रशासक लगइन" : "Admin Panel"}
+                  </span>
+                  
+                  {isAdminMode ? (
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <span className="text-[11px] font-bold text-emerald-600 truncate flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                        {state.language === "ne" ? "अनलक" : "Unlocked"}
+                      </span>
+                      <button
+                        onClick={handleAdminLock}
+                        className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-600 rounded border border-red-100 text-[10px] font-bold transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        {state.language === "ne" ? "लक" : "Lock"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 mt-1">
+                      <input
+                        type="password"
+                        placeholder="PIN"
+                        value={adminPasswordInput}
+                        onChange={(e) => setAdminPasswordInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleAdminUnlock();
+                        }}
+                        className="w-full min-w-0 px-2 py-1 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-red-500 focus:outline-none font-sans"
+                        title="Use 'admin' or '1234' to unlock"
+                      />
+                      <button
+                        onClick={handleAdminUnlock}
+                        className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded text-[10px] font-bold transition-colors cursor-pointer shrink-0"
+                      >
+                        {state.language === "ne" ? "खोल्नुहोस" : "Unlock"}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -3272,6 +3454,22 @@ ${state.senderDesignation}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="px-3 py-1.5 border border-slate-200 rounded-md text-xs focus:ring-2 focus:ring-red-500 focus:outline-none w-full md:w-64 bg-white font-sans"
                 />
+
+                {isAdminMode && selectedEntries.length > 0 && (
+                  <button
+                    onClick={handleBulkDelete}
+                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white border border-transparent rounded-md text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer whitespace-nowrap animate-in fade-in slide-in-from-right-1 duration-200"
+                    title={state.language === "ne" ? "चयन गरिएका चलानीहरू मेटाउनुहोस्" : "Delete selected dispatches"}
+                  >
+                    <Trash className="w-3.5 h-3.5" />
+                    <span>
+                      {state.language === "ne" 
+                        ? `चयन गरिएका मेटाउनुहोस् (${toNepaliNumerals(selectedEntries.length)})` 
+                        : `Delete Selected (${selectedEntries.length})`
+                      }
+                    </span>
+                  </button>
+                )}
 
                 <button
                   onClick={loadRegister}
@@ -3372,121 +3570,169 @@ ${state.senderDesignation}
                   </p>
                 </div>
               ) : (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 text-xs font-bold uppercase tracking-wider">
-                      <th className="py-3.5 px-4 text-center w-24">{state.language === "ne" ? "चलानी नं." : "Ref No."}</th>
-                      <th className="py-3.5 px-4 w-28">{state.language === "ne" ? "पत्र संख्या" : "Letter No."}</th>
-                      <th className="py-3.5 px-4 w-32">{state.language === "ne" ? "दर्ता मिति" : "Date"}</th>
-                      <th className="py-3.5 px-4 w-40">{state.language === "ne" ? "शाखा" : "Section"}</th>
-                      <th className="py-3.5 px-4 max-w-xs">{state.language === "ne" ? "पाउने कार्यालय / व्यक्ति" : "Recipient Address"}</th>
-                      <th className="py-3.5 px-4 max-w-sm">{state.language === "ne" ? "पत्रको विषय" : "Subject Title"}</th>
-                      <th className="py-3.5 px-4 w-36">{state.language === "ne" ? "हस्ताक्षरकर्ता" : "Signed By"}</th>
-                      <th className="py-3.5 px-4 text-right w-44">{state.language === "ne" ? "कार्यहरू" : "Actions"}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-sans">
-                    {(() => {
-                      const filteredList = chalaniRegister.filter((r) => {
-                        // 1. Section Filter
-                        if (filterSection !== "all") {
-                          if (filterSection === "none") {
-                            const sec = r.sectionId;
-                            if (sec && sec !== "none" && sec !== "office") {
-                              return false;
-                            }
-                          } else {
-                            if (r.sectionId !== filterSection) {
-                              return false;
-                            }
-                          }
+                (() => {
+                  const filteredList = chalaniRegister.filter((r) => {
+                    // 1. Section Filter
+                    if (filterSection !== "all") {
+                      if (filterSection === "none") {
+                        const sec = r.sectionId;
+                        if (sec && sec !== "none" && sec !== "office") {
+                          return false;
                         }
+                      } else {
+                        if (r.sectionId !== filterSection) {
+                          return false;
+                        }
+                      }
+                    }
 
-                        // 2. Date Range Filter
-                        if (filterStartDate !== "") {
-                          if (!r.dateAD || r.dateAD < filterStartDate) {
-                            return false;
-                          }
-                        }
-                        if (filterEndDate !== "") {
-                          if (!r.dateAD || r.dateAD > filterEndDate) {
-                            return false;
-                          }
-                        }
+                    // 2. Date Range Filter
+                    if (filterStartDate !== "") {
+                      if (!r.dateAD || r.dateAD < filterStartDate) {
+                        return false;
+                      }
+                    }
+                    if (filterEndDate !== "") {
+                      if (!r.dateAD || r.dateAD > filterEndDate) {
+                        return false;
+                      }
+                    }
 
-                        // 3. Search Query Filter
-                        if (searchQuery.trim() !== "") {
-                          const query = searchQuery.toLowerCase();
-                          const ch = (r.chalaniNo || "").toLowerCase();
-                          const ln = (r.letterNo || "").toLowerCase();
-                          const rec = (r.recipient || "").toLowerCase();
-                          const sub = (r.subject || "").toLowerCase();
-                          const sdr = (r.sender || "").toLowerCase();
-                          const secNameNe = (r.sectionNameNe || "").toLowerCase();
-                          const secNameEn = (r.sectionNameEn || "").toLowerCase();
-                          return ch.includes(query) || ln.includes(query) || rec.includes(query) || sub.includes(query) || sdr.includes(query) || secNameNe.includes(query) || secNameEn.includes(query);
-                        }
-                        return true;
-                      });
+                    // 3. Search Query Filter
+                    if (searchQuery.trim() !== "") {
+                      const query = searchQuery.toLowerCase();
+                      const ch = (r.chalaniNo || "").toLowerCase();
+                      const ln = (r.letterNo || "").toLowerCase();
+                      const rec = (r.recipient || "").toLowerCase();
+                      const sub = (r.subject || "").toLowerCase();
+                      const sdr = (r.sender || "").toLowerCase();
+                      const secNameNe = (r.sectionNameNe || "").toLowerCase();
+                      const secNameEn = (r.sectionNameEn || "").toLowerCase();
+                      return ch.includes(query) || ln.includes(query) || rec.includes(query) || sub.includes(query) || sdr.includes(query) || secNameNe.includes(query) || secNameEn.includes(query);
+                    }
+                    return true;
+                  });
 
-                      if (filteredList.length === 0) {
-                        return (
+                  return (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 text-xs font-bold uppercase tracking-wider">
+                          {isAdminMode && (
+                            <th className="py-3.5 px-3 text-center w-12 border-r border-slate-200/50">
+                              <input
+                                type="checkbox"
+                                checked={filteredList.length > 0 && filteredList.every((item) => selectedEntries.includes(item.id))}
+                                onChange={() => handleSelectAllEntries(filteredList)}
+                                className="w-3.5 h-3.5 accent-red-600 rounded cursor-pointer"
+                              />
+                            </th>
+                          )}
+                          <th className="py-3.5 px-4 text-center w-24">{state.language === "ne" ? "चलानी नं." : "Ref No."}</th>
+                          <th className="py-3.5 px-4 w-28">{state.language === "ne" ? "पत्र संख्या" : "Letter No."}</th>
+                          <th className="py-3.5 px-4 w-32">{state.language === "ne" ? "दर्ता मिति" : "Date"}</th>
+                          <th className="py-3.5 px-4 w-40">{state.language === "ne" ? "शाखा" : "Section"}</th>
+                          <th className="py-3.5 px-4 max-w-xs">{state.language === "ne" ? "पाउने कार्यालय / व्यक्ति" : "Recipient Address"}</th>
+                          <th className="py-3.5 px-4 max-w-sm">{state.language === "ne" ? "पत्रको विषय" : "Subject Title"}</th>
+                          <th className="py-3.5 px-4 w-36">{state.language === "ne" ? "हस्ताक्षरकर्ता" : "Signed By"}</th>
+                          <th className="py-3.5 px-4 text-right w-56">{state.language === "ne" ? "कार्यहरू" : "Actions"}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-sans">
+                        {filteredList.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="py-12 text-center text-slate-400 font-medium">
+                            <td colSpan={isAdminMode ? 9 : 8} className="py-12 text-center text-slate-400 font-medium">
                               {state.language === "ne" ? "फिल्टर गरिएका सर्तहरूसँग मेल खाने कुनै पनि चलानी फेला परेन।" : "No matches found with selected filters."}
                             </td>
                           </tr>
-                        );
-                      }
-
-                      return filteredList.map((entry) => (
-                        <tr key={entry.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-3 px-4 font-bold text-center text-red-600 bg-red-50/30">
-                            {entry.chalaniNo}
-                          </td>
-                          <td className="py-3 px-4 font-mono text-slate-500">{entry.letterNo}</td>
-                          <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
-                            {state.language === "ne" ? entry.dateBS : entry.dateAD}
-                          </td>
-                          <td className="py-3 px-4 font-semibold text-slate-600">
-                            {entry.sectionNameNe || entry.sectionNameEn ? (
-                              <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200 text-[10px] whitespace-nowrap">
-                                {state.language === "ne" ? (entry.sectionNameNe || entry.sectionNameEn) : (entry.sectionNameEn || entry.sectionNameNe)}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400 italic text-[10px]">
-                                {state.language === "ne" ? "केन्द्रीय" : "Central"}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 max-w-xs truncate font-medium text-slate-600" title={entry.recipient}>
-                            {entry.recipient}
-                          </td>
-                          <td className="py-3 px-4 max-w-sm truncate text-slate-900 font-semibold" title={entry.subject}>
-                            {entry.subject}
-                          </td>
-                          <td className="py-3 px-4 text-slate-500 truncate" title={entry.sender}>
-                            {entry.sender}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex gap-1.5 justify-end">
-                              <button
-                                onClick={() => handleLoadFromRegister(entry)}
-                                className="px-2.5 py-1 bg-red-50 text-red-700 rounded border border-red-100 hover:bg-red-100 transition-colors cursor-pointer text-[10px] font-bold whitespace-nowrap"
-                              >
-                                {state.language === "ne" ? "बोर्डमा खोल्नुहोस्" : "Edit / Open"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ));
-                    })()}
-                  </tbody>
-                </table>
+                        ) : (
+                          filteredList.map((entry) => (
+                            <tr key={entry.id} className="hover:bg-slate-50/70 transition-colors">
+                              {isAdminMode && (
+                                <td className="py-3 px-3 text-center border-r border-slate-100">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedEntries.includes(entry.id)}
+                                    onChange={() => handleToggleSelectEntry(entry.id)}
+                                    className="w-3.5 h-3.5 accent-red-600 rounded cursor-pointer"
+                                  />
+                                </td>
+                              )}
+                              <td className="py-3 px-4 font-bold text-center text-red-600 bg-red-50/30 font-sans">
+                                {entry.chalaniNo}
+                              </td>
+                              <td className="py-3 px-4 font-mono text-slate-500">{entry.letterNo}</td>
+                              <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
+                                {state.language === "ne" ? entry.dateBS : entry.dateAD}
+                              </td>
+                              <td className="py-3 px-4 font-semibold text-slate-600">
+                                {entry.sectionNameNe || entry.sectionNameEn ? (
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200 text-[10px] whitespace-nowrap">
+                                    {state.language === "ne" ? (entry.sectionNameNe || entry.sectionNameEn) : (entry.sectionNameEn || entry.sectionNameNe)}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 italic text-[10px]">
+                                    {state.language === "ne" ? "केन्द्रीय" : "Central"}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 max-w-xs truncate font-medium text-slate-600 font-sans" title={entry.recipient}>
+                                {entry.recipient}
+                              </td>
+                              <td className="py-3 px-4 max-w-sm truncate text-slate-900 font-semibold" title={entry.subject}>
+                                {entry.subject}
+                              </td>
+                              <td className="py-3 px-4 text-slate-500 truncate" title={entry.sender}>
+                                {entry.sender}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <div className="flex gap-1.5 justify-end">
+                                  <button
+                                    onClick={() => setPreviewingEntry(entry)}
+                                    className="px-2 py-1 bg-slate-100 text-slate-700 rounded border border-slate-200 hover:bg-slate-200 transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1 whitespace-nowrap shadow-xs"
+                                    title={state.language === "ne" ? "पत्रको पूर्ण विवरण हेर्नुहोस्" : "View prepared letter"}
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>{state.language === "ne" ? "हेर्नुहोस्" : "View"}</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleLoadFromRegister(entry)}
+                                    className="px-2.5 py-1 bg-red-50 text-red-700 rounded border border-red-100 hover:bg-red-100 transition-colors cursor-pointer text-[10px] font-bold whitespace-nowrap shadow-xs"
+                                  >
+                                    {state.language === "ne" ? "खोल्नुहोस्" : "Edit / Open"}
+                                  </button>
+                                  {isAdminMode && (
+                                    <button
+                                      onClick={() => handleSingleDelete(entry.id, entry.chalaniNo)}
+                                      className="px-2 py-1 bg-rose-50 text-rose-600 rounded border border-rose-100 hover:bg-rose-100 transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1 shadow-xs"
+                                      title={state.language === "ne" ? "मेटाउनुहोस्" : "Delete"}
+                                    >
+                                      <Trash className="w-3.5 h-3.5 text-rose-500" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  );
+                })()
               )}
             </div>
           </div>
         </div>
+      )}
+
+      {/* Letter Preview Modal */}
+      {previewingEntry && (
+        <LetterPreviewModal
+          isOpen={!!previewingEntry}
+          onClose={() => setPreviewingEntry(null)}
+          entry={previewingEntry}
+          language={state.language}
+          onLoadIntoEditor={handleLoadFromRegister}
+        />
       )}
 
       {/* Bottom Status Bar */}
@@ -3500,6 +3746,44 @@ ${state.senderDesignation}
           <span>{state.language === "ne" ? "स्थानीय लाइभ सिङ्क सक्रिय" : "Local Live Sync Active"}</span>
         </div>
       </footer>
+        {customConfirm && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl">
+              <h3 className="text-lg font-bold text-slate-900 mb-2">{customConfirm.title}</h3>
+              <p className="text-slate-600 mb-6">{customConfirm.message}</p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setCustomConfirm(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded hover:bg-slate-200"
+                >
+                  {state.language === "ne" ? "रद्द गर्नुहोस्" : "Cancel"}
+                </button>
+                <button
+                  onClick={customConfirm.onConfirm}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  {state.language === "ne" ? "मेटाउनुहोस्" : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {customAlert && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl">
+              <h3 className="text-lg font-bold text-slate-900 mb-2">{customAlert.title}</h3>
+              <p className="text-slate-600 mb-6">{customAlert.message}</p>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setCustomAlert(null)}
+                  className="px-4 py-2 bg-slate-900 text-white rounded hover:bg-slate-800"
+                >
+                  {state.language === "ne" ? "ठीक छ" : "OK"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }

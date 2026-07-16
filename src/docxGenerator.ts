@@ -12,7 +12,9 @@ import {
   ImageRun,
   UnderlineType,
   HeightRule,
-  Footer
+  Footer,
+  TabStopType,
+  Tab,
 } from "docx";
 import { LetterState } from "./types";
 import QRCode from "qrcode";
@@ -159,8 +161,8 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
               new ImageRun({
                 data: emblemArrayBuffer,
                 transformation: {
-                  width: 55,
-                  height: 55,
+                  width: 75,
+                  height: 75,
                 },
               } as any),
             ],
@@ -271,40 +273,53 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
     })
   );
 
-  // Third Line Right: Office Address (e.g. हेटौंडा, नेपाल)
-  if (state.officeAddress) {
-    docChildren.push(
-      new Paragraph({
-        alignment: AlignmentType.RIGHT,
-        spacing: { before: 40, after: 40 },
-        children: [
-          new TextRun({
-            text: state.officeAddress,
-            bold: true,
-            size: 22, // 11 pt
-            color: "DC2626",
-            font: isNepali ? "Kalimati" : "Times New Roman",
-          }),
-        ],
-      })
-    );
-  }
+  // Third Line: Office Department (Centered) and Address (Right-aligned)
+  if (state.officeAddress || state.officeDepartment) {
+    const textRuns: TextRun[] = [];
+    
+    // First tab (to center)
+    textRuns.push(new TextRun({ children: [new Tab()] }));
+    
+    if (state.officeDepartment) {
+      textRuns.push(
+        new TextRun({
+          text: `(${state.officeDepartment})`,
+          bold: true,
+          size: 22, // 11 pt
+          color: "DC2626",
+          font: isNepali ? "Kalimati" : "Times New Roman",
+        })
+      );
+    }
 
-  // Followed by respective branch and section name (officeDepartment) centered below
-  if (state.officeDepartment) {
+    // Second tab (to right)
+    textRuns.push(new TextRun({ children: [new Tab()] }));
+
+    if (state.officeAddress) {
+      textRuns.push(
+        new TextRun({
+          text: state.officeAddress,
+          bold: true,
+          size: 22, // 11 pt
+          color: "DC2626",
+          font: isNepali ? "Kalimati" : "Times New Roman",
+        })
+      );
+    }
+
     docChildren.push(
       new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 40, after: 80 },
-        children: [
-          new TextRun({
-            text: state.officeDepartment,
-            bold: true,
-            size: 24, // 12 pt
-            color: "DC2626",
-            font: isNepali ? "Kalimati" : "Times New Roman",
-          }),
+        tabStops: [
+          {
+            type: TabStopType.CENTER,
+            position: 4981, // ~center of printable A4 width (9962 / 2)
+          },
+          {
+            type: TabStopType.RIGHT,
+            position: 9962, // ~right edge of printable A4 width
+          },
         ],
+        children: textRuns,
       })
     );
   }
@@ -491,7 +506,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
     paragraphs.forEach((pText) => {
       if (!pText.trim()) return;
 
-      let alignment: any = AlignmentType.LEFT;
+      let alignment: any = AlignmentType.JUSTIFIED;
       if (/<center>/i.test(pText)) {
         alignment = AlignmentType.CENTER;
       } else if (/<right>/i.test(pText)) {
@@ -503,7 +518,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
       docChildren.push(
         new Paragraph({
           alignment: alignment,
-          spacing: { after: 120, line: 360 }, // Spacing after paragraph and 1.5 line height
+          spacing: { after: 120, line: 240 }, // Spacing after paragraph and 1.0 line height
           indent: alignment === AlignmentType.LEFT ? { firstLine: 400 } : undefined, // Standard paragraph indent only for left aligned
           children: parseTextToRuns(pText, isNepali, 22),
         })
@@ -715,23 +730,12 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
   // Right Cell Children (Sign-off & Signature Lines)
   const rightCellParagraphs: Paragraph[] = [
     new Paragraph({
-      alignment: AlignmentType.RIGHT,
-      spacing: { before: 240, after: 60 },
-      children: [
-        new TextRun({
-          text: isNepali ? "भवदीय," : "Sincerely yours,",
-          size: 22,
-          font: isNepali ? "Kalimati" : "Times New Roman",
-        }),
-      ],
-    }),
-    new Paragraph({
-      alignment: AlignmentType.RIGHT,
-      spacing: { after: 120 },
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 480, after: 120 },
       children: [
         new TextRun({
           text: "...........................................",
-          color: "D1D5DB",
+          color: "9CA3AF",
           size: 22,
         }),
       ],
@@ -741,7 +745,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
   if (state.senderName) {
     rightCellParagraphs.push(
       new Paragraph({
-        alignment: AlignmentType.RIGHT,
+        alignment: AlignmentType.CENTER,
         spacing: { after: 40 },
         children: [
           new TextRun({
@@ -758,7 +762,7 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
   if (state.senderDesignation) {
     rightCellParagraphs.push(
       new Paragraph({
-        alignment: AlignmentType.RIGHT,
+        alignment: AlignmentType.CENTER,
         spacing: { after: 40 },
         children: [
           new TextRun({
@@ -811,15 +815,18 @@ export async function generateDocxBlob(state: LetterState, emblemArrayBuffer: Ar
 
   // Construct the full Word Document
   const doc = new Document({
+    features: {
+      updateFields: false,
+    },
     sections: [
       {
         properties: {
           page: {
             margin: {
-              top: 1440, // 1 inch (72pt * 20 dxa = 1440 dxa)
-              bottom: 1440,
-              left: 1440,
-              right: 1440,
+              top: 504, // 0.35 inch
+              bottom: 504, // 0.35 inch
+              left: 1440, // 1.0 inch
+              right: 504, // 0.35 inch
             },
           },
         },
