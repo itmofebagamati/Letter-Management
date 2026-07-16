@@ -37,13 +37,18 @@ import {
   Lock,
   Unlock,
   ShieldCheck,
-  KeyRound
+  KeyRound,
+  LogOut,
+  LayoutDashboard,
+  Activity,
+  CheckCircle2,
+  FileBox
 } from "lucide-react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import { LetterState, Language, PresetOffice, TapasilItem, EmblemType } from "./types";
-import { OFFICE_PRESETS, toNepaliNumerals, getPrefilledNepaliDate } from "./presets";
+import { OFFICE_PRESETS, toNepaliNumerals, toEnglishNumerals, getPrefilledNepaliDate } from "./presets";
 import { generateDocxBlob } from "./docxGenerator";
 import nepalEmblemUrl from "../assets/nepal_emblem.svg";
 import { 
@@ -400,7 +405,7 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
   const [chalaniRegister, setChalaniRegister] = useState<any[]>([]);
   const [isRegisterLoading, setIsRegisterLoading] = useState(false);
   const [isRegisteringNow, setIsRegisteringNow] = useState(false);
-  const [activeTab, setActiveTab] = useState<"editor" | "register">("editor");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "editor" | "register">("dashboard");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterSection, setFilterSection] = useState("all");
   const [filterStartDate, setFilterStartDate] = useState("");
@@ -460,6 +465,42 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
   const [bulkProgressTotal, setBulkProgressTotal] = useState(0);
   const [bulkProgressMessage, setBulkProgressMessage] = useState("");
 
+  // Helper to dynamically get recipient details in correct language
+  const getRecipientDetails = (presetId: string, isNe: boolean) => {
+    switch (presetId) {
+      case "mofe_bagamati":
+        return {
+          designation: isNe ? "प्रमुख कोष नियन्त्रकज्यू" : "Chief Treasury Controller",
+          office: isNe ? "प्रदेश कोष तथा लेखा नियन्त्रक कार्यालय" : "Provincial Treasury and Accounts Controller Office",
+          address: isNe ? "हेटौंडा, बागमती प्रदेश" : "Hetauda, Bagmati Province"
+        };
+      case "mofaga_federal":
+        return {
+          designation: isNe ? "प्रमुख प्रशासकीय अधिकृतज्यू" : "Chief Administrative Officer",
+          office: isNe ? "काठमाडौं महानगरपालिका" : "Kathmandu Metropolitan City",
+          address: isNe ? "बागमती प्रदेश, काठमाडौं" : "Bagmati Province, Kathmandu"
+        };
+      case "ward_local":
+        return {
+          designation: isNe ? "प्रमुख जिल्ला अधिकारीज्यू" : "Chief District Officer",
+          office: isNe ? "जिल्ला प्रशासन कार्यालय" : "District Administration Office",
+          address: isNe ? "मकवानपुर" : "Makwanpur"
+        };
+      case "dao_district":
+        return {
+          designation: isNe ? "कार्यालय प्रमुखज्यू" : "Office In-Charge",
+          office: isNe ? "जिल्ला प्रहरी परिसर" : "District Police Range",
+          address: isNe ? "टेकु, काठमाडौं" : "Teku, Kathmandu"
+        };
+      default:
+        return {
+          designation: "",
+          office: "",
+          address: ""
+        };
+    }
+  };
+
   // Synchronize fields when language changes
   const handleLanguageChange = (lang: Language) => {
     // Translate bulk generation default text if unchanged
@@ -509,17 +550,22 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
         dept = prev.officeDepartment;
       }
 
+      const recipientDetails = getRecipientDetails(prev.presetId, isNe);
+
       return {
         ...prev,
         language: lang,
+        letterNo: isNe ? toNepaliNumerals(prev.letterNo) : toEnglishNumerals(prev.letterNo),
+        dispatchNo: isNe ? toNepaliNumerals(prev.dispatchNo) : toEnglishNumerals(prev.dispatchNo),
         officeName: isNe ? preset.name : preset.nameEn,
         officeProvince: isNe ? preset.province : preset.provinceEn,
         officeDepartment: dept,
         officeAddress: isNe ? preset.address : preset.addressEn,
         senderName: isNe ? preset.senderName.split(" (")[0] : preset.senderName,
         senderDesignation: isNe ? "शाखा अधिकृत" : "Section Officer",
-        recipientOffice: isNe ? preset.recipientOffice : "Provincial Treasury and Accounts Controller Office",
-        recipientAddress: isNe ? preset.recipientAddress : "Hetauda, Nepal",
+        recipientDesignation: recipientDetails.designation || prev.recipientDesignation,
+        recipientOffice: recipientDetails.office || prev.recipientOffice,
+        recipientAddress: recipientDetails.address || prev.recipientAddress,
         recipientSalutation: isNe ? "श्री" : "The",
         salutation: isNe ? "महोदय," : "Dear Sir/Madam,",
         subject: isNe ? "बजेट निकासा सम्बन्धमा।" : "Regarding Budget Allocation.",
@@ -544,6 +590,7 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
 
     setState((prev) => {
       const isNe = prev.language === "ne";
+      const recipientDetails = getRecipientDetails(presetId, isNe);
       
       let phone = prev.footerPhone;
       let email = prev.footerEmail;
@@ -578,8 +625,9 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
         emblemType: preset.emblemType,
         senderName: preset.senderName,
         senderDesignation: isNe ? "शाखा अधिकृत" : "Section Officer",
-        recipientOffice: isNe ? preset.recipientOffice : preset.recipientOffice || "Concerned Authority",
-        recipientAddress: isNe ? preset.recipientAddress : preset.recipientAddress || "Kathmandu, Nepal",
+        recipientDesignation: recipientDetails.designation || prev.recipientDesignation,
+        recipientOffice: recipientDetails.office || prev.recipientOffice,
+        recipientAddress: recipientDetails.address || prev.recipientAddress,
         recipientSalutation: isNe ? "श्री" : "The",
         salutation: isNe ? "महोदय," : "Dear Sir/Madam,",
         footerPhone: phone,
@@ -1810,7 +1858,7 @@ ${state.senderDesignation}
     }, 20);
   };
 
-  if (isAdminRoute && !isStaffAuthenticated) {
+  if (!isStaffAuthenticated) {
     return <StaffLogin 
       onAuth={() => {
         setIsStaffAuthenticated(true);
@@ -1824,21 +1872,44 @@ ${state.senderDesignation}
   }
   return (
     <div id="app-root" className="h-screen flex flex-col bg-[#f8fafc] text-slate-900 font-sans overflow-hidden">
-      {/* Top Navigation Bar */}
-      <nav id="app-header" className="h-16 flex items-center justify-between px-6 bg-white border-b border-slate-200 shrink-0 text-slate-900 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-red-600 rounded flex items-center justify-center shrink-0 shadow-sm">
-            <div className="w-4 h-4 border-2 border-white rounded-full"></div>
+      {/* Top Navigation Bar with Letterhead details */}
+      <nav id="app-header" className="flex flex-col bg-white border-b border-slate-200 shrink-0 z-10">
+        <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100">
+          <div className="flex items-center gap-4">
+            <img src={nepalEmblemUrl} alt="Nepal Government Emblem" className="w-12 h-12 md:w-14 md:h-14 object-contain" />
+            <div className="flex flex-col">
+              <span className="text-xs md:text-sm font-bold text-red-600 leading-tight">
+                {state.language === "ne" ? state.officeProvince : "Bagmati Province Government"}
+              </span>
+              <span className="text-base md:text-lg font-bold text-red-600 leading-tight">
+                {state.language === "ne" ? state.officeName : "Ministry of Forests and Environment"}
+              </span>
+            </div>
           </div>
-          <div>
-            <span className="font-bold tracking-tight text-base md:text-lg text-slate-900 block md:inline">
-              नेपाल सरकार <span className="font-normal text-slate-400 font-serif italic text-xs md:text-sm">DocEngine</span>
-            </span>
+          <div className="hidden md:flex flex-col text-right">
+             <span className="text-sm font-bold text-slate-800">
+                {state.language === "ne" ? `${state.officeName}को चलानी प्रणालीमा स्वागत छ` : `Welcome to Chalani System of ${state.officeName}`}
+             </span>
+             <span className="text-xs text-slate-500">
+                {state.language === "ne" ? "आधिकारिक पत्र तथा चलानी व्यवस्थापन प्रणाली" : "Official Letter & Dispatch Management System"}
+             </span>
           </div>
         </div>
-
-        {/* Navigation Tabs */}
-        <div className="hidden md:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+        
+        <div className="flex items-center justify-between px-6 py-2 bg-slate-50">
+          {/* Navigation Tabs */}
+          <div className="hidden md:flex items-center bg-slate-200/50 p-0.5 rounded-lg border border-slate-200">
+          <button
+            onClick={() => setActiveTab("dashboard")}
+            className={`px-4 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
+              activeTab === "dashboard"
+                ? "bg-white text-red-700 shadow-sm border border-slate-200/50"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>{state.language === "ne" ? "ड्यासबोर्ड (Dashboard)" : "Overview"}</span>
+          </button>
           <button
             onClick={() => setActiveTab("editor")}
             className={`px-4 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -1943,11 +2014,94 @@ ${state.senderDesignation}
             <Printer className="w-4 h-4" />
             {state.language === "ne" ? "प्रिन्ट / PDF" : "Print / PDF"}
           </button>
+          <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+            <button
+              onClick={() => {
+                setIsStaffAuthenticated(false);
+                setIsAdminMode(false);
+              }}
+              className="px-3 py-1 text-xs font-semibold rounded-md flex items-center gap-1.5 transition-all cursor-pointer text-red-600 hover:bg-red-50"
+              title={state.language === "ne" ? "लगआउट गर्नुहोस्" : "Logout"}
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{state.language === "ne" ? "लगआउट" : "Logout"}</span>
+            </button>
+          </div>
+        </div>
         </div>
       </nav>
 
       {/* Main Workspace */}
-      {activeTab === "editor" ? (
+      {activeTab === "dashboard" && (() => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todaysDispatches = chalaniRegister.filter(entry => entry.dateAD === todayStr).length;
+        
+        return (
+          <div className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-8 flex flex-col gap-6">
+            <div className="bg-white p-8 rounded-xl border border-slate-200/80 shadow-sm flex flex-col items-center justify-center text-center gap-4">
+              <div className="w-20 h-20 bg-red-50 text-red-600 rounded-full flex items-center justify-center shadow-sm">
+                <LayoutDashboard className="w-10 h-10" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-slate-800">
+                  {state.language === "ne" ? `${state.officeName}को चलानी प्रणालीमा स्वागत छ` : `Welcome to Chalani System of ${state.officeName}`}
+                </h2>
+                <p className="text-sm text-slate-500 mt-2">
+                  {state.language === "ne" 
+                    ? "यहाँबाट तपाईं नयाँ पत्र मस्यौदा तयार गर्न र चलानी दर्ता व्यवस्थापन गर्न सक्नुहुन्छ।" 
+                    : "From here you can draft new letters and manage dispatch registrations."}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-sm flex items-start gap-4">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
+                  <FileBox className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-sans">
+                    {state.language === "ne" ? "आज ड्राफ्ट गरिएका कागजातहरू" : "Documents Drafted Today"}
+                  </span>
+                  <span className="text-3xl font-bold text-slate-900 leading-none mt-1 block">
+                    {state.language === "ne" ? toNepaliNumerals(todaysDispatches) : todaysDispatches}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-sm flex items-start gap-4">
+                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center shrink-0">
+                  <Activity className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-sans">
+                    {state.language === "ne" ? "लम्बित दर्ता" : "Pending Registrations"}
+                  </span>
+                  <span className="text-3xl font-bold text-slate-900 leading-none mt-1 block">
+                    {state.language === "ne" ? "०" : "0"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-sm flex items-start gap-4">
+                <div className="w-12 h-12 bg-green-50 text-green-600 rounded-lg flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-sans">
+                    {state.language === "ne" ? "कुल चलानी" : "Total Dispatches"}
+                  </span>
+                  <span className="text-3xl font-bold text-slate-900 leading-none mt-1 block">
+                    {state.language === "ne" ? toNepaliNumerals(chalaniRegister.length) : chalaniRegister.length}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {activeTab === "editor" && (
         <main id="app-body" className="flex flex-col lg:flex-row flex-1 overflow-hidden">
         {/* Left Sidebar Controls */}
         <aside id="form-panel" className="w-full lg:w-[420px] shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 bg-white p-6 flex flex-col gap-6 overflow-y-auto h-auto lg:h-full">
@@ -3335,7 +3489,9 @@ ${state.senderDesignation}
           </div>
         </section>
       </main>
-      ) : (
+      )}
+      
+      {activeTab === "register" && (
         <div className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-8 flex flex-col gap-6">
           {/* Header Dashboard Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

@@ -4,7 +4,7 @@ export const OFFICE_PRESETS: PresetOffice[] = [
   {
     id: "mofe_bagamati",
     name: "वन तथा वातावरण मन्त्रालय",
-    nameEn: "Ministry of Economic Affairs and Planning",
+    nameEn: "Ministry of Forests and Environment",
     province: "बागमती प्रदेश सरकार",
     provinceEn: "Bagamati Province Government",
     department: "",
@@ -91,6 +91,17 @@ export function toNepaliNumerals(numStr: string | number): string {
     .map(char => {
       const digit = parseInt(char, 10);
       return isNaN(digit) ? char : nepaliDigits[digit];
+    })
+    .join("");
+}
+
+export function toEnglishNumerals(numStr: string | number): string {
+  const nepaliDigits = ["०", "१", "२", "३", "४", "५", "६", "७", "८", "९"];
+  return String(numStr)
+    .split("")
+    .map(char => {
+      const idx = nepaliDigits.indexOf(char);
+      return idx !== -1 ? String(idx) : char;
     })
     .join("");
 }

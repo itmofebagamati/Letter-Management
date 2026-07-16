@@ -47,17 +47,13 @@ export async function getNextChalaniNumber(sectionId: string, startNumber: numbe
   const q = query(logCollection, limit(1));
   const snap = await getDocs(q);
   
-  // If no entries at all, force reset the counter to 0!
-  if (snap.empty) {
-      await setSectionCounter(sectionId, 0);
-      return 1;
-  }
-
   return await runTransaction(db, async (transaction) => {
     const counterSnap = await transaction.get(counterRef);
     let nextValue = startNumber;
 
-    if (counterSnap.exists()) {
+    if (snap.empty) {
+      nextValue = 1;
+    } else if (counterSnap.exists()) {
       const data = counterSnap.data();
       if (typeof data.currentValue === "number") {
         nextValue = data.currentValue + 1;
