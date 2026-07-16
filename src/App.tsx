@@ -36,7 +36,8 @@ import {
   Eye,
   Lock,
   Unlock,
-  ShieldCheck
+  ShieldCheck,
+  KeyRound
 } from "lucide-react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -55,6 +56,7 @@ import {
 } from "./firebase";
 import { LetterPreviewModal } from "./components/LetterPreviewModal";
 import { StaffLogin } from "./components/StaffLogin";
+import { PasswordSettingsModal } from "./components/PasswordSettingsModal";
 
 // HTML & Markdown formatting parser helpers for document preview
 function parseHtmlTags(html: string, counter = { current: 0 }): ReactNode[] {
@@ -244,7 +246,7 @@ function QrCodeRenderer({ value, size = 80 }: { value: string; size?: number }) 
   );
 }
 
-export default function App() {
+export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }) {
   const initialDates = getPrefilledNepaliDate();
 
   // Primary states
@@ -406,6 +408,7 @@ export default function App() {
 
   // Admin & Deletion States
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [isPasswordSettingsOpen, setIsPasswordSettingsOpen] = useState(false);
   const [isStaffAuthenticated, setIsStaffAuthenticated] = useState(false);
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
@@ -1039,12 +1042,13 @@ export default function App() {
   // Admin Mode Handlers
   const handleAdminUnlock = () => {
     const trimmed = adminPasswordInput.trim();
-    if (trimmed === "admin" || trimmed === "1234") {
+    const storedAdminPwd = localStorage.getItem("adminPassword") || "admin";
+    if (trimmed === storedAdminPwd || trimmed === "1234") {
       setIsAdminMode(true);
       setAdminPasswordInput("");
       showAlert(state.language === "ne" ? "प्रशासक मोड सफलतापूर्वक अनलक भयो!" : "Admin Mode unlocked successfully!");
     } else {
-      showAlert(state.language === "ne" ? "गलत पासवर्ड! कृपया 'admin' वा '1234' प्रयोग गर्नुहोस्।" : "Incorrect password! Please use 'admin' or '1234'.");
+      showAlert(state.language === "ne" ? "गलत पासवर्ड!" : "Incorrect password!");
     }
   };
 
@@ -1806,7 +1810,18 @@ ${state.senderDesignation}
     }, 20);
   };
 
-  if (!isStaffAuthenticated) return <StaffLogin onAuth={() => setIsStaffAuthenticated(true)} language={state.language} />;
+  if (isAdminRoute && !isStaffAuthenticated) {
+    return <StaffLogin 
+      onAuth={() => {
+        setIsStaffAuthenticated(true);
+        if (isAdminRoute) {
+          setIsAdminMode(true);
+        }
+      }} 
+      language={state.language} 
+      isAdminRoute={isAdminRoute} 
+    />;
+  }
   return (
     <div id="app-root" className="h-screen flex flex-col bg-[#f8fafc] text-slate-900 font-sans overflow-hidden">
       {/* Top Navigation Bar */}
@@ -3380,53 +3395,64 @@ ${state.senderDesignation}
             </div>
 
             {/* Admin Access Panel Card (col-span-1) */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 w-full">
-                <div className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${isAdminMode ? "bg-emerald-50 text-emerald-600 animate-pulse" : "bg-slate-100 text-slate-500"}`}>
-                  {isAdminMode ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-sans">
-                    {state.language === "ne" ? "प्रशासक लगइन" : "Admin Panel"}
-                  </span>
-                  
-                  {isAdminMode ? (
-                    <div className="flex items-center justify-between gap-2 mt-1">
-                      <span className="text-[11px] font-bold text-emerald-600 truncate flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                        {state.language === "ne" ? "अनलक" : "Unlocked"}
-                      </span>
-                      <button
-                        onClick={handleAdminLock}
-                        className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-600 rounded border border-red-100 text-[10px] font-bold transition-colors cursor-pointer whitespace-nowrap"
-                      >
-                        {state.language === "ne" ? "लक" : "Lock"}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1 mt-1">
-                      <input
-                        type="password"
-                        placeholder="PIN"
-                        value={adminPasswordInput}
-                        onChange={(e) => setAdminPasswordInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleAdminUnlock();
-                        }}
-                        className="w-full min-w-0 px-2 py-1 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-red-500 focus:outline-none font-sans"
-                        title="Use 'admin' or '1234' to unlock"
-                      />
-                      <button
-                        onClick={handleAdminUnlock}
-                        className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded text-[10px] font-bold transition-colors cursor-pointer shrink-0"
-                      >
-                        {state.language === "ne" ? "खोल्नुहोस" : "Unlock"}
-                      </button>
-                    </div>
-                  )}
+            {isAdminRoute && (
+              <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 w-full">
+                  <div className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${isAdminMode ? "bg-emerald-50 text-emerald-600 animate-pulse" : "bg-slate-100 text-slate-500"}`}>
+                    {isAdminMode ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-sans">
+                      {state.language === "ne" ? "प्रशासक लगइन" : "Admin Panel"}
+                    </span>
+                    
+                    {isAdminMode ? (
+                      <div className="flex items-center justify-between gap-2 mt-1">
+                        <span className="text-[11px] font-bold text-emerald-600 truncate flex items-center gap-1">
+                          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                          {state.language === "ne" ? "अनलक" : "Unlocked"}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setIsPasswordSettingsOpen(true)}
+                            className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-200 text-[10px] font-bold transition-colors cursor-pointer whitespace-nowrap"
+                            title={state.language === "ne" ? "पासवर्ड परिवर्तन गर्नुहोस्" : "Change Passwords"}
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={handleAdminLock}
+                            className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-600 rounded border border-red-100 text-[10px] font-bold transition-colors cursor-pointer whitespace-nowrap"
+                          >
+                            {state.language === "ne" ? "लक" : "Lock"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 mt-1">
+                        <input
+                          type="password"
+                          placeholder="PIN"
+                          value={adminPasswordInput}
+                          onChange={(e) => setAdminPasswordInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleAdminUnlock();
+                          }}
+                          className="w-full min-w-0 px-2 py-1 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-red-500 focus:outline-none font-sans"
+                          title="Use 'admin' or '1234' to unlock"
+                        />
+                        <button
+                          onClick={handleAdminUnlock}
+                          className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded text-[10px] font-bold transition-colors cursor-pointer shrink-0"
+                        >
+                          {state.language === "ne" ? "खोल्नुहोस" : "Unlock"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Table list card */}
@@ -3783,6 +3809,13 @@ ${state.senderDesignation}
               </div>
             </div>
           </div>
+        )}
+        
+        {isPasswordSettingsOpen && (
+          <PasswordSettingsModal
+            language={state.language}
+            onClose={() => setIsPasswordSettingsOpen(false)}
+          />
         )}
     </div>
   );
