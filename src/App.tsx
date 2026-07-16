@@ -843,21 +843,34 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
     // Gather and serialize all stylesheets to retain Tailwind & google font styles
     let stylesHtml = "";
     try {
-      for (const sheetObj of Array.from(document.styleSheets)) {
-        try {
-          if (sheetObj.href && !sheetObj.href.startsWith(window.location.origin)) {
-            continue;
-          }
-          const rules = sheetObj.cssRules || sheetObj.rules;
-          if (rules) {
-            stylesHtml += `<style>`;
-            for (const rule of Array.from(rules)) {
-              stylesHtml += rule.cssText + "\n";
+      const sheets = document.styleSheets;
+      if (sheets) {
+        for (let i = 0; i < sheets.length; i++) {
+          const sheetObj = sheets[i];
+          try {
+            if (sheetObj) {
+              if (sheetObj.href && !sheetObj.href.startsWith(window.location.origin)) {
+                continue;
+              }
+              const rules = sheetObj.cssRules || sheetObj.rules;
+              if (rules) {
+                stylesHtml += `<style>`;
+                for (let j = 0; j < rules.length; j++) {
+                  try {
+                    const rule = rules[j];
+                    if (rule && rule.cssText) {
+                      stylesHtml += rule.cssText + "\n";
+                    }
+                  } catch (e) {
+                    // skip individual rule error
+                  }
+                }
+                stylesHtml += `</style>`;
+              }
             }
-            stylesHtml += `</style>`;
+          } catch (e) {
+            // Fallback/skip sheet error
           }
-        } catch (e) {
-          // Fallback to reading original style tags
         }
       }
     } catch (err) {
@@ -961,68 +974,14 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
         scrollX: 0,
         scrollY: 0,
         onclone: (clonedDoc) => {
-          // Extract and serialize all document stylesheets with oklch removed to prevent html2canvas parser crashes
-          let cssText = "";
-          try {
-            for (const sheetObj of Array.from(document.styleSheets)) {
-              try {
-                if (sheetObj.href && !sheetObj.href.startsWith(window.location.origin)) {
-                  continue;
-                }
-                const rules = sheetObj.cssRules || sheetObj.rules;
-                if (rules) {
-                  for (const rule of Array.from(rules)) {
-                    cssText += rule.cssText + "\n";
-                  }
-                }
-              } catch (e) {
-                // skip cross-origin stylesheet errors
-              }
+          // Stylesheets and style attributes are fully sanitized to remove oklch, ensuring html2canvas renders perfectly
+
+          clonedDoc.querySelectorAll("input, button, svg, textarea").forEach(el => el.remove());
+                clonedDoc.querySelectorAll("style").forEach((styleEl) => {
+            if (styleEl.textContent && styleEl.textContent.includes("oklch")) {
+              styleEl.textContent = replaceOklchInString(styleEl.textContent);
             }
-          } catch (err) {
-            console.error("Failed to read stylesheets:", err);
-          }
-
-          // Replace all oklch values in the CSS text
-          const sanitizedCss = replaceOklchInString(cssText);
-
-          // Remove all existing style and link tags in clonedDoc to prevent secondary parsing crashes
-          clonedDoc.querySelectorAll("style, link[rel='stylesheet']").forEach((el) => {
-            el.remove();
           });
-
-          // Create and append a single, clean style tag with the sanitized CSS
-          const newStyle = clonedDoc.createElement("style");
-          newStyle.textContent = sanitizedCss;
-          clonedDoc.head.appendChild(newStyle);
-
-          // Proxy getComputedStyle on the cloned document's defaultView (window)
-          // so any dynamically extracted styling returns fallback standard RGB instead of oklch
-          const clonedWindow = clonedDoc.defaultView;
-          if (clonedWindow) {
-            const originalGetComputedStyle = clonedWindow.getComputedStyle;
-            (clonedWindow as any).getComputedStyle = function (elt: any, pseudoElt: any) {
-              const style = originalGetComputedStyle.call(this, elt, pseudoElt);
-              return new Proxy(style, {
-                get(target, prop, receiver) {
-                  if (typeof prop === "string") {
-                    if (prop === "getPropertyValue") {
-                      return function(propertyName: string) {
-                        const val = target.getPropertyValue(propertyName);
-                        return replaceOklchInString(val);
-                      };
-                    }
-                    const val = Reflect.get(target, prop, receiver);
-                    if (typeof val === "string") {
-                      return replaceOklchInString(val);
-                    }
-                    return val;
-                  }
-                  return Reflect.get(target, prop, receiver);
-                }
-              });
-            };
-          }
 
           // Sanitize inline style attributes in the cloned document
           clonedDoc.querySelectorAll("[style]").forEach((el) => {
@@ -1059,9 +1018,15 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
 
       const cleanSubject = state.subject.replace(/[^\w\u0900-\u097F\s]/gi, "").trim();
       pdf.save(`Government_Letter_${cleanSubject || "Nepal"}.pdf`);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to generate and download PDF document", err);
-      showAlert(state.language === "ne" ? "पीडीएफ फाइल डाउनलोड गर्न असफल भयो।" : "Failed to download PDF file.");
+      const isNe = state.language === "ne";
+      const errMsg = err?.message ? ` (${err.message})` : "";
+      showAlert(
+        isNe 
+          ? `पीडीएफ फाइल डाउनलोड गर्न असफल भयो।${errMsg}` 
+          : `Failed to download PDF file.${errMsg}`
+      );
     } finally {
       setIsDownloadingPdf(false);
     }
@@ -1280,7 +1245,16 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } else {
-        const sheet = document.getElementById("a4-sheet");
+        let sheet = document.getElementById("a4-sheet");
+        if (!sheet) {
+          // Wait up to 2 seconds for the editor tab to mount the element
+          for (let i = 0; i < 40; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            sheet = document.getElementById("a4-sheet");
+            if (sheet) break;
+          }
+        }
+
         if (sheet) {
           const originalWidth = sheet.style.width;
           const originalMinHeight = sheet.style.minHeight;
@@ -1309,66 +1283,14 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
             scrollX: 0,
             scrollY: 0,
             onclone: (clonedDoc) => {
-              // Extract and serialize all document stylesheets with oklch removed to prevent html2canvas parser crashes
-              let cssText = "";
-              try {
-                for (const sheetObj of Array.from(document.styleSheets)) {
-                  try {
-                    if (sheetObj.href && !sheetObj.href.startsWith(window.location.origin)) {
-                      continue;
-                    }
-                    const rules = sheetObj.cssRules || sheetObj.rules;
-                    if (rules) {
-                      for (const rule of Array.from(rules)) {
-                        cssText += rule.cssText + "\n";
-                      }
-                    }
-                  } catch (e) {
-                    // skip cross-origin stylesheet errors
-                  }
+              // Stylesheets and style attributes are fully sanitized to remove oklch, ensuring html2canvas renders perfectly
+
+              clonedDoc.querySelectorAll("input, button, svg, textarea").forEach(el => el.remove());
+                clonedDoc.querySelectorAll("style").forEach((styleEl) => {
+                if (styleEl.textContent && styleEl.textContent.includes("oklch")) {
+                  styleEl.textContent = replaceOklchInString(styleEl.textContent);
                 }
-              } catch (err) {
-                console.error("Failed to read stylesheets:", err);
-              }
-
-              // Replace all oklch values in the CSS text
-              const sanitizedCss = replaceOklchInString(cssText);
-
-              // Remove all existing style and link tags in clonedDoc to prevent secondary parsing crashes
-              clonedDoc.querySelectorAll("style, link[rel='stylesheet']").forEach((el) => {
-                el.remove();
               });
-
-              // Create and append a single, clean style tag with the sanitized CSS
-              const newStyle = clonedDoc.createElement("style");
-              newStyle.textContent = sanitizedCss;
-              clonedDoc.head.appendChild(newStyle);
-
-              const clonedWindow = clonedDoc.defaultView;
-              if (clonedWindow) {
-                const originalGetComputedStyle = clonedWindow.getComputedStyle;
-                (clonedWindow as any).getComputedStyle = function (elt: any, pseudoElt: any) {
-                  const style = originalGetComputedStyle.call(this, elt, pseudoElt);
-                  return new Proxy(style, {
-                    get(target, prop, receiver) {
-                      if (typeof prop === "string") {
-                        if (prop === "getPropertyValue") {
-                          return function(propertyName: string) {
-                            const val = target.getPropertyValue(propertyName);
-                            return replaceOklchInString(val);
-                          };
-                        }
-                        const val = Reflect.get(target, prop, receiver);
-                        if (typeof val === "string") {
-                          return replaceOklchInString(val);
-                        }
-                        return val;
-                      }
-                      return Reflect.get(target, prop, receiver);
-                    }
-                  });
-                };
-              }
 
               clonedDoc.querySelectorAll("[style]").forEach((el) => {
                 const htmlEl = el as HTMLElement;
@@ -1415,9 +1337,15 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
           : `Official registration complete! Ref Chalani No: ${formattedNo}`
       );
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Cloud registration failed:", err);
-      showAlert(state.language === "ne" ? "चलानी दर्ता गर्न सकिएन।" : "Failed to register Chalani in cloud.");
+      const isNe = state.language === "ne";
+      const errorMsg = err?.message ? ` (${err.message})` : "";
+      showAlert(
+        isNe 
+          ? `चलानी दर्ता गर्न सकिएन।${errorMsg}` 
+          : `Failed to register Chalani in cloud.${errorMsg}`
+      );
     } finally {
       if (originalTab !== "editor") {
         setActiveTab(originalTab);
@@ -1677,32 +1605,9 @@ ${state.senderDesignation}
               scrollX: 0,
               scrollY: 0,
               onclone: (clonedDoc) => {
-                const clonedWindow = clonedDoc.defaultView;
-                if (clonedWindow) {
-                  const originalGetComputedStyle = clonedWindow.getComputedStyle;
-                  (clonedWindow as any).getComputedStyle = function (elt: any, pseudoElt: any) {
-                    const style = originalGetComputedStyle.call(this, elt, pseudoElt);
-                    return new Proxy(style, {
-                      get(target, prop, receiver) {
-                        if (typeof prop === "string") {
-                          if (prop === "getPropertyValue") {
-                            return function(propertyName: string) {
-                              const val = target.getPropertyValue(propertyName);
-                              return replaceOklchInString(val);
-                            };
-                          }
-                          const val = Reflect.get(target, prop, receiver);
-                          if (typeof val === "string") {
-                            return replaceOklchInString(val);
-                          }
-                          return val;
-                        }
-                        return Reflect.get(target, prop, receiver);
-                      }
-                    });
-                  };
-                }
+                // Stylesheets and style attributes are fully sanitized to remove oklch, ensuring html2canvas renders perfectly
 
+                clonedDoc.querySelectorAll("input, button, svg, textarea").forEach(el => el.remove());
                 clonedDoc.querySelectorAll("style").forEach((styleEl) => {
                   if (styleEl.textContent && styleEl.textContent.includes("oklch")) {
                     styleEl.textContent = replaceOklchInString(styleEl.textContent);
@@ -3448,7 +3353,7 @@ ${state.senderDesignation}
               )}
 
               {/* Sign-off Block (Bottom Right) */}
-              <div className="flex flex-col items-center text-center text-xs md:text-sm text-slate-800 w-64">
+              <div className="flex flex-col items-center text-center text-xs md:text-sm text-slate-800 w-max ml-auto">
                 {/* Signature space */}
                 <div className="text-slate-400 font-medium mb-2 select-none">
                   ...........................................
