@@ -81,7 +81,7 @@ Key Points to Include: ${keyPoints || 'None specified'}
 Draft a complete, official, and flawless subject and main body for this government letter. Make sure it adheres to Nepalese government official letter-writing standards. Provide the response strictly in JSON format as specified.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: userPrompt,
       config: {
         systemInstruction: systemPrompt,
@@ -174,6 +174,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) { startServer(); }
 
 export default app;

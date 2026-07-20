@@ -842,7 +842,7 @@ export function LetterPreviewModal({ isOpen, onClose, entry, language, onLoadInt
             {/* A4 Sheet Rendering Container */}
             <div
               id="modal-a4-sheet"
-              className="w-full max-w-[21cm] min-h-[29.7cm] bg-white text-slate-900 shadow-xl border border-slate-200 pt-[34px] pb-[34px] pl-[96px] pr-[34px] flex flex-col justify-between relative select-text mb-4"
+              className="w-full max-w-[21cm] min-h-[29.7cm] bg-white text-slate-900 shadow-xl border border-slate-200 pt-[34px] pb-[34px] pl-[96px] pr-[34px] flex flex-col justify-between relative select-text mb-8"
               style={{ fontFamily: letterData.language === "ne" ? "Noto Sans Devanagari, sans-serif" : "Georgia, serif" }}
             >
               {/* Sheet Watermark */}
@@ -855,44 +855,43 @@ export function LetterPreviewModal({ isOpen, onClose, entry, language, onLoadInt
               </div>
 
               <div className="flex flex-col flex-1">
-                {/* 1. Header block */}
+                {/* 1. Letterhead Header Block */}
                 <div className="relative mb-2 w-full flex flex-col">
                   {/* Left Logo Emblem */}
                   <div className="absolute left-0 top-0 w-16 h-16 flex items-start justify-start select-none">
                     {letterData.emblemType === "custom" && letterData.customLogoUrl ? (
-                      <img src={letterData.customLogoUrl} alt="Office Logo" className="w-16 h-16 object-contain" />
+                      <img src={letterData.customLogoUrl} alt="Office Logo" className="w-18 h-18 object-contain" />
                     ) : (
                       <NepalEmblemSVG type={letterData.emblemType || "nepal"} size={64} />
                     )}
                   </div>
 
-                  {/* Center block */}
+                  {/* Center Block for First and Second lines */}
                   <div className="w-full flex flex-col items-center">
                     {letterData.officeProvince && (
-                      <h3 className="text-red-600 text-xs font-bold tracking-wide">
+                      <h3 className="text-red-600 text-xs md:text-sm font-bold tracking-wide font-nepali">
                         {letterData.officeProvince}
                       </h3>
                     )}
                     {letterData.officeName && (
-                      <h1 className="text-red-600 text-base md:text-xl font-extrabold tracking-tight mt-1">
+                      <h1 className="text-red-600 text-lg md:text-2xl font-extrabold tracking-tight mt-1 font-nepali text-center w-full">
                         {letterData.officeName}
                       </h1>
                     )}
                   </div>
 
-                  {/* Department and Address Right */}
                   <div className="grid grid-cols-3 items-center w-full mt-1 px-2">
                     <div />
                     <div className="text-center">
                       {letterData.officeDepartment && (
-                        <h2 className="text-red-600 text-xs font-semibold tracking-wide">
+                        <h2 className="text-red-600 text-xs md:text-sm font-semibold tracking-wide font-nepali">
                           ({letterData.officeDepartment})
                         </h2>
                       )}
                     </div>
                     <div className="text-right">
                       {letterData.officeAddress && (
-                        <div className="text-red-600 font-bold text-xs leading-none">
+                        <div className="text-red-600 font-bold text-xs md:text-sm font-nepali leading-none">
                           {letterData.officeAddress}
                         </div>
                       )}
@@ -900,8 +899,8 @@ export function LetterPreviewModal({ isOpen, onClose, entry, language, onLoadInt
                   </div>
                 </div>
 
-                {/* 2. Metadata details (Letter No, Dispatch No, Date) */}
-                <div className="grid grid-cols-2 text-xs mt-2 mb-6 border-b border-red-100 pb-3 font-semibold">
+                {/* 2. Metadata Columns */}
+                <div className="grid grid-cols-2 text-xs font-nepali mt-2 mb-6 border-b border-red-100 pb-3">
                   <div className="space-y-1 text-left text-red-600 font-bold">
                     <p>
                       <span>{letterData.language === "ne" ? "पत्र संख्या:-" : "Letter No:-"}</span>{" "}
@@ -915,16 +914,14 @@ export function LetterPreviewModal({ isOpen, onClose, entry, language, onLoadInt
                   <div className="text-right flex flex-col justify-end items-end text-red-600 font-bold">
                     <p>
                       <span>{letterData.language === "ne" ? "मिति:" : "Date:"}</span>{" "}
-                      <span className="font-semibold text-slate-800">
-                        {letterData.language === "ne" ? letterData.dateBS : letterData.dateAD}
-                      </span>
+                      <span className="font-semibold text-slate-800">{letterData.language === "ne" ? letterData.dateBS : letterData.dateAD}</span>
                     </p>
                   </div>
                 </div>
 
-                {/* 3. Recipient Info block */}
+                {/* 3. Recipient Information Block */}
                 {(letterData.recipientDesignation || letterData.recipientOffice) && (
-                  <div className="text-xs md:text-sm text-slate-950 font-bold mb-6 flex flex-col gap-0.5 leading-normal text-left">
+                  <div className="text-xs md:text-sm text-slate-900 font-bold mb-6 flex flex-col gap-1 leading-normal text-left">
                     {letterData.recipientDesignation && (
                       <div>
                         {letterData.recipientSalutation ? `${letterData.recipientSalutation} ` : ""}
@@ -938,7 +935,7 @@ export function LetterPreviewModal({ isOpen, onClose, entry, language, onLoadInt
                   </div>
                 )}
 
-                {/* 4. Letter Subject block */}
+                {/* 4. Letter Subject Block */}
                 {letterData.subject && (
                   <div className="text-center mb-6 mt-4">
                     <span className="border-b-2 border-slate-900 font-bold px-2 py-0.5 text-xs md:text-sm uppercase tracking-wide">
@@ -965,7 +962,7 @@ export function LetterPreviewModal({ isOpen, onClose, entry, language, onLoadInt
                   </div>
                 )}
 
-                {/* 7. Tapasil Table Details block */}
+                {/* 7. Tapasil Table */}
                 {letterData.showTapasil && letterData.tapasilItems && letterData.tapasilItems.length > 0 && (
                   <div className="mt-6 text-left">
                     <div className="text-xs md:text-sm font-bold text-slate-900 mb-2 font-sans uppercase tracking-wider text-[10px]">
@@ -1010,12 +1007,12 @@ export function LetterPreviewModal({ isOpen, onClose, entry, language, onLoadInt
               <div className="mt-12 flex justify-between items-end w-full">
                 {/* Verification QR Code (Bottom Left) */}
                 {letterData.showQrCode && letterData.qrCodeValue ? (
-                  <div className="flex flex-col items-start text-left max-w-[200px]">
+                  <div id="preview-qrcode-block" className="flex flex-col items-start text-left max-w-[200px]">
                     <div className="p-1.5 bg-white border border-slate-100 rounded-md shadow-xs">
-                      <QrCodeRenderer value={letterData.qrCodeValue} size={70} />
+                      <QrCodeRenderer value={letterData.qrCodeValue} size={76} />
                     </div>
                     {letterData.qrCodeLabel && (
-                      <p className="text-[9px] leading-tight text-slate-500 font-medium mt-1.5 max-w-[160px]">
+                      <p className="text-[9px] md:text-[10px] leading-tight text-slate-500 font-medium font-nepali mt-2 max-w-[170px]">
                         {letterData.qrCodeLabel}
                       </p>
                     )}
@@ -1025,7 +1022,7 @@ export function LetterPreviewModal({ isOpen, onClose, entry, language, onLoadInt
                 )}
 
                 {/* Sign-off Block (Bottom Right) */}
-                <div className="flex flex-col items-center text-center text-xs md:text-sm text-slate-800 w-64 border-t-0">
+                <div className="flex flex-col items-center text-center text-xs md:text-sm text-slate-800 w-max ml-auto">
                   <div className="text-slate-400 font-medium mb-2 select-none">
                     ...........................................
                   </div>
@@ -1040,9 +1037,9 @@ export function LetterPreviewModal({ isOpen, onClose, entry, language, onLoadInt
               </div>
 
               {/* 9. Dynamic Office Absolute Footer */}
-              <div className="absolute bottom-10 left-10 right-10">
+              <div className="absolute bottom-10 left-10 right-10 font-nepali">
                 <div className="border-t border-red-600 w-full mb-3"></div>
-                <p className="text-center text-[10px] text-red-600 font-semibold tracking-wide">
+                <p className="text-center text-[10px] md:text-xs text-red-600 font-semibold tracking-wide">
                   {letterData.language === "ne" ? (
                     <>
                       {letterData.footerPhone && `फोन नं. ${letterData.footerPhone}`}

@@ -269,7 +269,7 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
     footerEmail: "mofe@bagamati.gov.np",
     footerWeb: "mofe.bagamati.gov.np",
     letterNo: "२०८२/०८३",
-    dispatchNo: "४८२",
+    dispatchNo: "",
     dateBS: initialDates.bsDate,
     dateAD: initialDates.adDate,
     recipientSalutation: "श्री",
@@ -939,6 +939,7 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
   // PDF file downloader
   const handleDownloadPdf = async () => {
     setIsDownloadingPdf(true);
+    await new Promise((resolve) => setTimeout(resolve, 300));
     try {
       const sheet = document.getElementById("a4-sheet");
       if (!sheet) {
@@ -1193,6 +1194,14 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
       ].filter(Boolean).join(", ");
 
       // Save complete entry payload with full JSON snapshot so it is easily editable/re-downloadable
+      let serializedState;
+      try {
+        serializedState = JSON.stringify(updatedState);
+      } catch (e) {
+        console.error("State not serializable", updatedState);
+        throw e;
+      }
+
       await logChalaniEntry({
         chalaniNo: formattedNo,
         letterNo: updatedState.letterNo,
@@ -1204,7 +1213,7 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
         dateBS: updatedState.dateBS,
         dateAD: updatedState.dateAD,
         sender: senderString,
-        letterStateJson: JSON.stringify(updatedState)
+        letterStateJson: serializedState
       });
 
       // 3. Render and trigger native document download
@@ -3173,9 +3182,9 @@ ${state.senderDesignation}
                   <div className="relative">
                     {state.emblemType === "custom" ? (
                       state.customLogoUrl ? (
-                        <img src={state.customLogoUrl} alt="Office Logo" className="w-16 h-16 object-contain transition-all group-hover:brightness-95 group-hover:scale-105" />
+                        <img src={state.customLogoUrl} alt="Office Logo" className="w-18 h-18 object-contain transition-all group-hover:brightness-95 group-hover:scale-105" />
                       ) : (
-                        <div className="w-16 h-16 border border-dashed border-red-200 rounded flex items-center justify-center text-[9px] text-red-500 text-center font-sans font-semibold p-1 bg-red-50 group-hover:bg-red-100 transition-colors">
+                        <div className="w-18 h-18 border border-dashed border-red-200 rounded flex items-center justify-center text-[9px] text-red-500 text-center font-sans font-semibold p-1 bg-red-50 group-hover:bg-red-100 transition-colors">
                           Upload Logo
                         </div>
                       )
