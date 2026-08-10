@@ -12,8 +12,8 @@ export const PasswordSettingsModal: React.FC<PasswordSettingsModalProps> = ({ on
   const [isSaved, setIsSaved] = useState(false);
 
   const handleSave = () => {
-    localStorage.setItem("userPassword", userPassword);
-    localStorage.setItem("adminPassword", adminPassword);
+    localStorage.setItem("userPassword", userPassword.trim());
+    localStorage.setItem("adminPassword", adminPassword.trim());
     setIsSaved(true);
     setTimeout(() => {
       setIsSaved(false);

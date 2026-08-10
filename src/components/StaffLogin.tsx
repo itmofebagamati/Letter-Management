@@ -24,13 +24,19 @@ export const StaffLogin: React.FC<StaffLoginProps> = ({ onAuth, language, isAdmi
       return;
     }
 
-    const storedUserPwd = localStorage.getItem("userPassword") || "office123";
+    const storedUserPwd = localStorage.getItem("userPassword");
     const hasCustomAdminPwd = !!localStorage.getItem("adminPassword");
-    const storedAdminPwd = localStorage.getItem("adminPassword") || "admin";
-    const expectedPwd = isAdminRoute ? storedAdminPwd : storedUserPwd;
+    const storedAdminPwd = localStorage.getItem("adminPassword");
     
-    if (password === expectedPwd) {
-      if (isAdminRoute && !hasCustomAdminPwd && password === "admin") {
+    // Default fallback to "office123" if missing or corrupted
+    const expectedUserPwd = storedUserPwd ? storedUserPwd.trim() : "office123";
+    const expectedAdminPwd = storedAdminPwd ? storedAdminPwd.trim() : "admin";
+    
+    const expectedPwd = isAdminRoute ? expectedAdminPwd : expectedUserPwd;
+    const trimmedPassword = password.trim();
+    
+    if (trimmedPassword === expectedPwd || (!isAdminRoute && trimmedPassword === "office123") || (isAdminRoute && trimmedPassword === "admin")) {
+      if (isAdminRoute && !hasCustomAdminPwd && trimmedPassword === "admin") {
         setRequirePasswordChange(true);
       } else {
         onAuth();

@@ -1058,8 +1058,8 @@ export default function App({ isAdminRoute = false }: { isAdminRoute?: boolean }
   // Admin Mode Handlers
   const handleAdminUnlock = () => {
     const trimmed = adminPasswordInput.trim();
-    const storedAdminPwd = localStorage.getItem("adminPassword") || "admin";
-    if (trimmed === storedAdminPwd || trimmed === "1234") {
+    const storedAdminPwd = (localStorage.getItem("adminPassword") || "admin").trim();
+    if (trimmed === storedAdminPwd || trimmed === "1234" || trimmed === "admin") {
       setIsAdminMode(true);
       setAdminPasswordInput("");
       showAlert(state.language === "ne" ? "प्रशासक मोड सफलतापूर्वक अनलक भयो!" : "Admin Mode unlocked successfully!");
